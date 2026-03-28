@@ -159,6 +159,12 @@
   .sw::after { content:''; position:absolute; width:16px; height:16px; background:var(--muted); border-radius:50%; top:3px; left:3px; transition:transform .3s, background .3s; }
   .feat-toggle.on .sw { background:rgba(0,212,255,.3); }
   .feat-toggle.on .sw::after { background:var(--blue); transform:translateX(20px); box-shadow:0 0 10px var(--blue); }
+  .rank-opt { padding:10px 12px; border:1px solid var(--border); border-radius:8px; cursor:pointer;
+    background:rgba(255,255,255,0.02); transition:all 0.2s; }
+  .rank-opt:hover { border-color:var(--purple); background:rgba(127,90,240,0.05); }
+  .rank-opt.on { border-color:var(--purple); background:rgba(127,90,240,0.1);
+    box-shadow:0 0 12px rgba(127,90,240,0.2); }
+  .rank-opt.on div:first-child { color:var(--purple); }
 
   /* CHECKBOX */
   .chk-row { display:flex; align-items:center; gap:10px; margin:8px 0; cursor:pointer; }
@@ -692,6 +698,48 @@
     <!-- RIGHT: model config -->
     <div class="card">
       <div class="card-label">Model Configuration</div>
+
+      <!-- Auto-select toggle — Tab 1 FOF style -->
+      <div class="feat-toggle" id="chk-auto-select" onclick="this.classList.toggle('on'); toggleAutoSelect()" style="margin-bottom:16px;">
+        <div>
+          <div class="feat-name" style="color:var(--purple);">AUTO-SELECT</div>
+          <div class="feat-desc">Run all 11 models × 6 scalers — find the best combo</div>
+        </div>
+        <div class="sw"></div>
+      </div>
+
+      <!-- Ranking metric selector — shown only when auto-select is ON -->
+      <div id="ml-rank-metric-wrap" style="display:none; margin-bottom:16px;">
+        <label class="lbl">RANK MODELS BY</label>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:6px;">
+          <div class="rank-opt on" data-metric="Weighted Average" onclick="selectRankMetric(this)">
+            <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;">W. AVERAGE</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">Weighted avg all metrics</div>
+          </div>
+          <div class="rank-opt" data-metric="Macro F1" onclick="selectRankMetric(this)">
+            <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;">MACRO F1</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">Unweighted per-class F1</div>
+          </div>
+          <div class="rank-opt" data-metric="Macro Accuracy" onclick="selectRankMetric(this)">
+            <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;">MACRO ACC</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">Mean per-class accuracy</div>
+          </div>
+          <div class="rank-opt" data-metric="Macro Precision" onclick="selectRankMetric(this)">
+            <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;">MACRO PREC</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">Low false positives</div>
+          </div>
+          <div class="rank-opt" data-metric="Macro Recall" onclick="selectRankMetric(this)">
+            <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;">MACRO REC</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">Low false negatives</div>
+          </div>
+          <div class="rank-opt" data-metric="Weighted F1" onclick="selectRankMetric(this)">
+            <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;">W. F1</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">Weighted F1 score</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="ml-manual-config">
       <div style="margin-bottom:12px;">
         <label class="lbl">Classifier</label>
         <select id="ml-model" class="inp" onchange="updateMLViz()">
@@ -739,10 +787,28 @@
         <input type="range" min="10" max="100" step="10" value="80"
                oninput="document.getElementById('fs-ratio-val').textContent=this.value+'%'; mlFsRatio=this.value">
       </div>
+      <div style="margin-top:12px;">
+        <label class="lbl">Data Balancing</label>
+        <select id="ml-balance" class="inp">
+          <option value="">None (no balancing)</option>
+          <option value="SMOTE">SMOTE — Oversampling</option>
+          <option value="RandomOverSampler">Random Oversampling</option>
+          <option value="RandomUnderSampler">Random Undersampling</option>
+          <option value="ADASYN">ADASYN</option>
+        </select>
+      </div>
+      </div><!-- end ml-manual-config -->
     </div>
   </div>
 
   <!-- brainML moved to fixed background -->
+
+  <div id="ml-grid-prog" style="display:none; margin-bottom:10px;">
+    <div style="font-family:'Space Mono',monospace; font-size:10px; color:var(--blue); letter-spacing:1px;" id="ml-grid-txt">RUNNING GRID SEARCH…</div>
+    <div style="margin-top:6px; background:rgba(255,255,255,0.05); border-radius:4px; height:6px; overflow:hidden;">
+      <div id="ml-grid-bar" style="height:100%; width:0%; background:linear-gradient(90deg,var(--purple),var(--blue)); transition:width 0.3s ease; border-radius:4px;"></div>
+    </div>
+  </div>
 
   <div id="ml-alert" style="display:none;"></div>
 
@@ -1928,6 +1994,25 @@ function toggleFSRatio(){
   document.getElementById('fs-ratio-wrap').style.display = v ? 'block' : 'none';
 }
 
+function toggleAutoSelect(){
+  const on = document.getElementById('chk-auto-select').classList.contains('on');
+  document.getElementById('ml-manual-config').style.display = on ? 'none' : 'block';
+  document.getElementById('ml-rank-metric-wrap').style.display = on ? 'block' : 'none';
+  document.getElementById('btn-ml').textContent = on
+    ? '▶ RUN GRID SEARCH (ALL MODELS × SCALERS)'
+    : '▶ TRAIN & EVALUATE';
+}
+
+function selectRankMetric(el){
+  document.querySelectorAll('.rank-opt').forEach(e => e.classList.remove('on'));
+  el.classList.add('on');
+}
+
+function getSelectedRankMetric(){
+  const el = document.querySelector('.rank-opt.on');
+  return el ? el.dataset.metric : 'Weighted Average';
+}
+
 function updateMLViz(){ mlActive = true; }
 
 function updateNN(){
@@ -2157,7 +2242,22 @@ async function runFE(){
               const [dt, pct, cls, proc, skip] = parts;
               const [done2, total2] = dt.split('/');
               feUpdateLive(cls, proc, skip, total2);
-              feSetProgress(parseFloat(pct), `PROCESSING ${cls.toUpperCase()}…`);
+              const realPct = parseFloat(pct);
+              feSetProgress(realPct, `PROCESSING ${cls.toUpperCase()}…`);
+              // Light up correct step pill based on which feature is being computed
+              // (server label tells us the class, we infer feature stage from progress)
+              const featSteps = ['step-fof','step-glcm','step-glrlm','step-glszm'].filter(
+                id => document.getElementById(id)?.style.display !== 'none'
+              );
+              const stepIdx = Math.min(
+                Math.floor((realPct / 100) * featSteps.length),
+                featSteps.length - 1
+              );
+              // Mark previous steps done, current active
+              featSteps.forEach((id, i) => {
+                if (i < stepIdx) feCompleteStep(id);
+                else if (i === stepIdx) feSetStep(id);
+              });
             } else if (line.startsWith('TOTAL:')) {
               feUpdateLive(undefined, 0, 0, line.replace('TOTAL:','').trim());
             } else if (line.startsWith('ERROR:')) {
@@ -2172,7 +2272,7 @@ async function runFE(){
       }
     })();
 
-    // ── Cycle through steps while fetch runs — neuron lights up segment by segment
+    // Action potential animation — runs SLIGHTLY behind real progress for visual effect
     feCompleteStep('step-scan');
 
     const steps = [
@@ -2182,24 +2282,37 @@ async function runFE(){
       { id:'step-glszm', active:doGLSZM, label:'COMPUTING GLSZM MATRICES'  },
     ].filter(s => s.active);
 
-    let stageIndex = 0, dots = 0;
+    // Animation speed scales with image size — bigger = slower chase to match reality
+    const imgSize = +document.getElementById('fe-size').value || 128;
+    // Speed table: 64→fast, 128→medium, 256→slow, 512→very slow
+    const speedMap = {
+       64: { chase: 0.18, cap: 0.40 },  // fast  — 64px processes quickly
+      128: { chase: 0.12, cap: 0.25 },  // medium
+      192: { chase: 0.09, cap: 0.18 },
+      256: { chase: 0.06, cap: 0.12 },  // slow
+      512: { chase: 0.03, cap: 0.06 },  // very slow — 512px takes much longer
+    };
+    const speed = speedMap[imgSize] || speedMap[128];
+
+    let fakePct = 2;
     while (!_fetchDone) {
-      const step = steps[Math.min(stageIndex, steps.length - 1)];
-      if (step) {
-        feSetStep(step.id);
-        feSetIndeterminate(step.label + '.'.repeat((dots % 3) + 1));
-      } else {
-        feSetStep('step-export');
-        feSetIndeterminate('BUILDING FEATURE TABLE' + '.'.repeat((dots % 3) + 1));
-      }
-      dots++;
-      // Advance to next step every ~3.5 seconds
-      if (dots % 10 === 0 && stageIndex < steps.length) {
-        feCompleteStep(steps[stageIndex].id);
-        stageIndex++;
-      }
-      await new Promise(r => setTimeout(r, 350));
+      const gap = currentProgPct - fakePct;
+      fakePct += Math.min(gap * speed.chase, speed.cap);
+      fakePct = Math.max(fakePct, 0);
+
+      // Drive neuron with lagged fake value — never ahead of real
+      if (typeof nScene !== 'undefined' && nScene) currentProgPct = Math.min(fakePct, 98);
+
+      // Advance step pills based on fake position
+      const stepIdx = Math.min(Math.floor((fakePct / 100) * steps.length), steps.length - 1);
+      steps.forEach((s, i) => {
+        if (i < stepIdx) feCompleteStep(s.id);
+        else if (i === stepIdx) feSetStep(s.id);
+      });
+
+      await new Promise(r => setTimeout(r, 200));
     }
+    currentProgPct = 100;
 
 
     const data = _respData;
@@ -2275,10 +2388,137 @@ async function runFE(){
 }
 
 // ── TAB 2: ML Classification ───────────────────
+// ── Grid Search: all models × all scalers ────────────────────────────────────
+async function runGridSearch(){
+  const trainFile = document.getElementById('ml-train-file').files[0];
+  const testFile  = document.getElementById('ml-test-file').files[0];
+  const btn = document.getElementById('btn-ml');
+  btn.disabled=true; btn.textContent='⏳ RUNNING GRID SEARCH…';
+
+  const fd = new FormData();
+  fd.append('train_csv', trainFile);
+  if(testFile) fd.append('test_csv', testFile);
+  fd.append('target_column',  document.getElementById('ml-target').value || 'Class');
+  fd.append('drop_first',     isChkOn('chk-drop-first') ? 'true' : 'false');
+  fd.append('test_ratio',     mlValSplit);
+  fd.append('feature_selection', document.getElementById('ml-fs').value);
+  fd.append('fs_ratio',       mlFsRatio);
+  fd.append('data_balance',   document.getElementById('ml-balance').value);
+  fd.append('target_size_used', window._lastTargetSize || document.getElementById('fe-size').value || 128);
+  fd.append('rank_metric', getSelectedRankMetric());
+
+  document.getElementById('ml-grid-prog').style.display = 'block';
+  document.getElementById('ml-results').style.display = 'none';
+  setAlert('ml-alert','info','Grid search running — testing all model & scaler combinations…');
+
+  try {
+    const resp = await fetch(API + '/grid_search_ml', { method:'POST', body:fd });
+    if(!resp.ok){ const e=await resp.json(); setAlert('ml-alert','err',e.error||'Grid search failed'); return; }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while(true){
+      const {done,value} = await reader.read();
+      if(done) break;
+      buf += decoder.decode(value,{stream:true});
+      const lines = buf.split('\n'); buf = lines.pop();
+      for(const line of lines){
+        if(line.startsWith('GRID_PROGRESS:')){
+          // GRID_PROGRESS:done/total:pct:model:scaler:score
+          const p = line.replace('GRID_PROGRESS:','').split(':');
+          const [dt,pct,mdl,scl,score] = p;
+          const [done2,total2] = dt.split('/');
+          document.getElementById('ml-grid-bar').style.width = pct+'%';
+          document.getElementById('ml-grid-txt').textContent =
+            `TESTING ${mdl} + ${scl} — ${done2}/${total2} (best so far: ${(+score*100).toFixed(1)}%)`;
+        } else if(line.startsWith('RESULTS_JSON:')){
+          const data = JSON.parse(line.replace('RESULTS_JSON:',''));
+          if(data.error){ setAlert('ml-alert','err',data.error); return; }
+          clearAlert('ml-alert');
+          const rankUsed = data.rank_metric || 'Weighted Average';
+          setAlert('ml-alert','ok',
+            `Grid search complete! Best: ${data.best_model} + ${data.best_scaler} — ${rankUsed}: ${(data.best_score*100).toFixed(2)}%`);
+
+          // Update model/scaler selects to show winner
+          document.getElementById('ml-model').value  = data.best_model;
+          document.getElementById('ml-scaler').value = data.best_scaler;
+
+          // Store session + metrics
+          sessionML = data.session_key;
+          window._lastMLMetrics = data.metrics;
+
+          // Show metrics
+          const mc = document.getElementById('ml-metrics');
+          const allM = [
+            {key:'Macro Accuracy',color:'var(--blue)',label:'MACRO ACC'},
+            {key:'Weighted Accuracy',color:'var(--blue)',label:'W. ACC'},
+            {key:'Macro F1',color:'var(--pink)',label:'MACRO F1'},
+            {key:'Weighted F1',color:'var(--pink)',label:'W. F1'},
+            {key:'Macro Recall',color:'var(--green)',label:'MACRO REC'},
+            {key:'Weighted Recall',color:'var(--green)',label:'W. REC'},
+            {key:'Macro Precision',color:'var(--purple)',label:'MACRO PREC'},
+            {key:'Weighted Precision',color:'var(--purple)',label:'W. PREC'},
+            {key:'Micro Accuracy',color:'var(--orange)',label:'MICRO ACC'},
+          ];
+          mc.style.gridTemplateColumns='repeat(auto-fill,minmax(120px,1fr))';
+          mc.innerHTML = allM.map(m=>{
+            const v=data.metrics&&data.metrics[m.key]!=null?(data.metrics[m.key]*100).toFixed(2)+'%':'—';
+            return `<div class="metric"><div class="metric-val" style="color:${m.color};font-size:18px;">${v}</div><div class="metric-lbl">${m.label}</div></div>`;
+          }).join('');
+
+          // Show leaderboard table
+          if(data.leaderboard && data.leaderboard.length){
+            const cols = ['Model','Scaler','Weighted Avg','Macro F1','Macro Accuracy'];
+            const rows = data.leaderboard.slice(0,10).map(r=>
+              `<tr>${cols.map(c=>
+                `<td style="padding:6px 10px;border-bottom:1px solid rgba(127,90,240,0.15);font-size:12px;${
+                  r.Model===data.best_model&&r.Scaler===data.best_scaler?'color:var(--blue);font-weight:bold;':''
+                }">${typeof r[c]==='number'?(r[c]*100).toFixed(2)+'%':r[c]}</td>`
+              ).join('')}</tr>`
+            ).join('');
+            document.getElementById('ml-dl-wrap').innerHTML = `
+              <div class="card-label" style="margin-top:16px;">TOP 10 COMBINATIONS</div>
+              <div style="overflow-x:auto;margin-top:8px;">
+                <table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;">
+                  <thead><tr>${cols.map(c=>`<th style="padding:8px 10px;text-align:left;background:rgba(127,90,240,0.15);font-size:11px;letter-spacing:1px;">${c.toUpperCase()}</th>`).join('')}</tr></thead>
+                  <tbody>${rows}</tbody>
+                </table>
+              </div>`;
+          }
+
+          // Download best pkl
+          if(data.pkl_b64){
+            const a=document.createElement('a');
+            a.href='data:application/octet-stream;base64,'+data.pkl_b64;
+            a.download=`BEST_${data.best_model}_${data.best_scaler}.pkl`;
+            a.className='dl-btn'; a.innerHTML='⬇ DOWNLOAD BEST MODEL (.pkl)';
+            document.getElementById('ml-dl-wrap').prepend(a);
+          }
+          if(data.confusion_matrix_b64){
+            document.getElementById('ml-dl-wrap').innerHTML+=`
+              <div style="margin-top:14px;"><div class="card-label">CONFUSION MATRIX (BEST MODEL)</div>
+              <img src="data:image/png;base64,${data.confusion_matrix_b64}" style="max-width:100%;border-radius:8px;border:1px solid var(--border);margin-top:8px;"></div>`;
+          }
+          document.getElementById('ml-results').style.display='block';
+        }
+      }
+    }
+  } catch(e){
+    setAlert('ml-alert','err','Grid search error: '+e.message);
+  } finally {
+    document.getElementById('ml-grid-prog').style.display='none';
+    btn.disabled=false;
+    btn.textContent='▶ RUN GRID SEARCH (ALL MODELS × SCALERS)';
+  }
+}
+
 async function runML(){
   clearAlert('ml-alert');
   const trainFile = document.getElementById('ml-train-file').files[0];
   if(!trainFile){ setAlert('ml-alert','err','Please upload a Training CSV.'); return; }
+
+  const autoSelect = document.getElementById('chk-auto-select').classList.contains('on');
+  if(autoSelect){ await runGridSearch(); return; }
 
   const btn = document.getElementById('btn-ml');
   btn.disabled=true; btn.textContent='⏳ TRAINING…';
@@ -2301,8 +2541,9 @@ async function runML(){
   fd.append('model',          document.getElementById('ml-model').value);
   fd.append('scaler',         document.getElementById('ml-scaler').value);
   fd.append('feature_selection', document.getElementById('ml-fs').value);
-  fd.append('fs_ratio',       mlFsRatio);
+  fd.append('fs_ratio',       mlFsRatio);  // backend divides by 100 to get float
   fd.append('target_size_used', window._lastTargetSize || document.getElementById('fe-size').value || 128);
+  fd.append('data_balance',    document.getElementById('ml-balance').value);
 
   try {
     const resp = await fetch(API + '/train_ml', { method:'POST', body:fd });
@@ -2315,21 +2556,27 @@ async function runML(){
     // Store objects reference for Predict tab
     sessionML = data.session_key;
 
-    // Metrics grid
+    // All 9 metrics — Macro / Weighted / Micro
     const mc = document.getElementById('ml-metrics');
-    const metricColors = ['var(--blue)','var(--green)','var(--purple)','var(--pink)'];
-    const mKeys = ['Macro Accuracy','Macro Precision','Macro Recall','Macro F1'];
-    mc.innerHTML = mKeys.map((k,i)=>{
-      const v = data.metrics && data.metrics[k] != null ? (data.metrics[k]*100).toFixed(2)+'%' : '—';
-      return `<div class="metric"><div class="metric-val" style="color:${metricColors[i]}">${v}</div><div class="metric-lbl">${k}</div></div>`;
+    const allMetrics = [
+      { key:'Macro Accuracy',    color:'var(--blue)',    label:'MACRO ACC'  },
+      { key:'Weighted Accuracy', color:'var(--blue)',    label:'W. ACC'     },
+      { key:'Macro F1',          color:'var(--pink)',    label:'MACRO F1'   },
+      { key:'Weighted F1',       color:'var(--pink)',    label:'W. F1'      },
+      { key:'Macro Recall',      color:'var(--green)',   label:'MACRO REC'  },
+      { key:'Weighted Recall',   color:'var(--green)',   label:'W. REC'     },
+      { key:'Macro Precision',   color:'var(--purple)',  label:'MACRO PREC' },
+      { key:'Weighted Precision',color:'var(--purple)',  label:'W. PREC'    },
+      { key:'Micro Accuracy',    color:'var(--orange)',  label:'MICRO ACC'  },
+    ];
+    // Also store metrics on window so Tab 4 can display them
+    window._lastMLMetrics = data.metrics;
+    mc.style.gridTemplateColumns = 'repeat(auto-fill, minmax(120px, 1fr))';
+    mc.innerHTML = allMetrics.map(m => {
+      const v = data.metrics && data.metrics[m.key] != null
+        ? (data.metrics[m.key]*100).toFixed(2)+'%' : '—';
+      return `<div class="metric"><div class="metric-val" style="color:${m.color};font-size:18px;">${v}</div><div class="metric-lbl">${m.label}</div></div>`;
     }).join('');
-
-    // Add extra metrics
-    ['Weighted F1','Micro Accuracy'].forEach((k,i)=>{
-      if(data.metrics && data.metrics[k] != null){
-        mc.innerHTML += `<div class="metric"><div class="metric-val" style="color:${metricColors[(i+2)%4]}">${(data.metrics[k]*100).toFixed(2)}%</div><div class="metric-lbl">${k}</div></div>`;
-      }
-    });
 
     // Download pickle
     if(data.pkl_b64){
@@ -2467,10 +2714,34 @@ async function runDL(){
 
 function showDLResults(results){
   const mc = document.getElementById('dl-metrics');
+  const orderedKeys = [
+    {key:'Macro Accuracy', color:'var(--blue)', label:'MACRO ACC', pct:true},
+    {key:'Weighted Accuracy', color:'var(--blue)', label:'W. ACC', pct:true},
+    {key:'Macro F1', color:'var(--pink)', label:'MACRO F1', pct:true},
+    {key:'Weighted F1', color:'var(--pink)', label:'W. F1', pct:true},
+    {key:'Macro Recall', color:'var(--green)', label:'MACRO REC', pct:true},
+    {key:'Weighted Recall', color:'var(--green)', label:'W. REC', pct:true},
+    {key:'Macro Precision', color:'var(--purple)', label:'MACRO PREC', pct:true},
+    {key:'Weighted Precision', color:'var(--purple)', label:'W. PREC', pct:true},
+    {key:'Micro Accuracy', color:'var(--orange)', label:'MICRO ACC', pct:true},
+    {key:'accuracy',     color:'var(--blue)',   label:'ACC',      pct:true},
+    {key:'val_accuracy', color:'var(--green)',  label:'VAL ACC',  pct:true},
+    {key:'loss',         color:'var(--pink)',   label:'LOSS',     pct:false},
+    {key:'val_loss',     color:'var(--orange)', label:'VAL LOSS', pct:false},
+  ];
+  const shown = new Set();
+  let html = orderedKeys.filter(m => results[m.key] != null).map(m => {
+    shown.add(m.key);
+    const v = m.pct ? (results[m.key]*100).toFixed(2)+'%' : (+results[m.key]).toFixed(4);
+    return `<div class="metric"><div class="metric-val" style="color:${m.color};font-size:18px;">${v}</div><div class="metric-lbl">${m.label}</div></div>`;
+  }).join('');
+  // Any remaining unknown keys
   const colors = ['var(--blue)','var(--green)','var(--purple)','var(--pink)','var(--orange)'];
-  mc.innerHTML = Object.entries(results).map(([k,v],i)=>
-    `<div class="metric"><div class="metric-val" style="color:${colors[i%5]}">${(+v).toFixed(4)}</div><div class="metric-lbl">${k}</div></div>`
-  ).join('');
+  Object.entries(results).filter(([k])=>!shown.has(k)).forEach(([k,v],i)=>{
+    html += `<div class="metric"><div class="metric-val" style="color:${colors[i%5]};font-size:18px;">${(+v).toFixed(4)}</div><div class="metric-lbl">${k.toUpperCase()}</div></div>`;
+  });
+  mc.innerHTML = html;
+  mc.style.gridTemplateColumns = 'repeat(auto-fill,minmax(120px,1fr))';
   document.getElementById('dl-results').style.display='block';
 }
 
@@ -2553,9 +2824,32 @@ function showPredResults(data){
   document.getElementById('pred-label-text').textContent = '🎯 ' + (data.predicted_class || '—');
   document.getElementById('pred-results').style.display = 'block';
 
-  // Update metrics panel from server response
-  if(data.metrics){
-    const mp = document.getElementById('pred-metrics-panel');
+  // Show all training metrics if session model was used
+  const mp = document.getElementById('pred-metrics-panel');
+  const useSession = document.getElementById('chk-use-session-ml')?.classList.contains('on');
+  const trainingMetrics = window._lastMLMetrics;
+
+  if(useSession && trainingMetrics) {
+    // Show all 9 training metrics from the last trained model
+    const allMetrics = [
+      { key:'Macro Accuracy', color:'var(--blue)', label:'MACRO ACC' },
+      { key:'Weighted Accuracy', color:'var(--blue)', label:'W. ACC' },
+      { key:'Macro F1', color:'var(--pink)', label:'MACRO F1' },
+      { key:'Weighted F1', color:'var(--pink)', label:'W. F1' },
+      { key:'Macro Recall', color:'var(--green)', label:'MACRO REC' },
+      { key:'Weighted Recall', color:'var(--green)', label:'W. REC' },
+      { key:'Macro Precision', color:'var(--purple)', label:'MACRO PREC' },
+      { key:'Weighted Precision', color:'var(--purple)', label:'W. PREC' },
+      { key:'Micro Accuracy', color:'var(--orange)', label:'MICRO ACC' },
+    ];
+    mp.style.gridTemplateColumns = 'repeat(auto-fill, minmax(110px, 1fr))';
+    mp.style.gap = '10px';
+    mp.innerHTML = `<div style="grid-column:1/-1;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:4px;">TRAINING METRICS (LAST SESSION)</div>` +
+      allMetrics.map(m => {
+        const v = trainingMetrics[m.key] != null ? (trainingMetrics[m.key]*100).toFixed(2)+'%' : '—';
+        return `<div class="metric"><div class="metric-val" style="color:${m.color};font-size:16px;">${v}</div><div class="metric-lbl">${m.label}</div></div>`;
+      }).join('');
+  } else if(data.metrics){
     const mk = ['auc','accuracy','sensitivity','specificity'];
     const mc = ['var(--blue)','var(--green)','var(--purple)','var(--pink)'];
     const ml = ['AUC-ROC','ACCURACY','SENSITIVITY','SPECIFICITY'];

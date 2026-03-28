@@ -282,9 +282,9 @@ def _extract_region_features(
 
 @app.route("/")
 def index():
+
     print("NEW INDEX ROUTE ACTIVE", flush=True)
-    path = _THIS_DIR
-    return send_from_directory(path, "Pipeline Application Website.html")
+    return send_from_directory(_THIS_DIR, "Pipeline Application.HTML")
 
     if os.path.isfile(p):
             print(f"[INDEX] Serving {p}", flush=True)
@@ -319,10 +319,9 @@ def health():
 @app.route("/extract_features", methods=["POST"])
 def extract_features():
     body = request.get_json(force=True)
-
     dataset_dir  = body.get("dataset_dir",  "").strip()
     output_csv   = body.get("output_csv",   "extracted_features.csv")
-    target_size  = int(body.get("target_size",  128))
+    target_size  = int(body.get("target_size", 128))
     ignore_zeros = bool(body.get("ignore_zeros", True))
     normalize    = bool(body.get("normalize",    True))
     do_fof       = bool(body.get("do_fof",   True))
@@ -344,20 +343,18 @@ def extract_features():
 
     def _stream():
         try:
-            class_dirs = sorted([
-                d for d in os.listdir(dataset_dir)
-                if os.path.isdir(os.path.join(dataset_dir, d))
-            ])
+            class_dirs = sorted([d for d in os.listdir(dataset_dir)
+                                  if os.path.isdir(os.path.join(dataset_dir, d))])
             if not class_dirs:
-                yield 'ERROR:No class subfolders found.\n'; return
+                yield "ERROR:No class subfolders found.\n"; return
 
+            print(f"[FE] ══════════════════════════════════════", flush=True)
+            print(f"[FE] TARGET SIZE  : {target_size} x {target_size} px", flush=True)
+            print(f"[FE] FEATURE TYPES: FOF={do_fof} GLCM={do_glcm} GLRLM={do_glrlm} GLSZM={do_glszm}", flush=True)
             print(f"[FE] Classes: {class_dirs}", flush=True)
-
-            total_images = sum(
-                1 for cls in class_dirs
-                for f in os.listdir(os.path.join(dataset_dir, cls))
-                if os.path.splitext(f)[1].lower() in IMG_EXTS and "_mask" not in f.lower()
-            )
+            total_images = sum(1 for cls in class_dirs
+                               for f in os.listdir(os.path.join(dataset_dir, cls))
+                               if os.path.splitext(f)[1].lower() in IMG_EXTS and "_mask" not in f.lower())
             print(f"[FE] Total images: {total_images}", flush=True)
             yield f"TOTAL:{total_images}\n"
 
@@ -367,79 +364,57 @@ def extract_features():
 
             for cls in class_dirs:
                 cls_path  = os.path.join(dataset_dir, cls)
-                all_files = sorted(os.listdir(cls_path))
-                img_files = [
-                    f for f in all_files
-                    if os.path.splitext(f)[1].lower() in IMG_EXTS
-                    and "_mask" not in f.lower()
-                ]
+                img_files = [f for f in sorted(os.listdir(cls_path))
+                             if os.path.splitext(f)[1].lower() in IMG_EXTS and "_mask" not in f.lower()]
 
                 for img_name in img_files:
                     stem, ext = os.path.splitext(img_name)
-                    img_path  = os.path.join(cls_path, img_name)
-                    mask_path = os.path.join(cls_path, f"{stem}_mask{ext}")
-
-                    img_arr  = _imread(img_path)
+                    img_arr   = _imread(os.path.join(cls_path, img_name))
                     if img_arr is None:
                         skipped += 1; done_count += 1; continue
 
-                    mask_arr = _imread(mask_path) if os.path.exists(mask_path) \
-                               else np.ones_like(img_arr) * 255
+                    mask_path = os.path.join(cls_path, f"{stem}_mask{ext}")
+                    mask_arr  = _imread(mask_path) if os.path.exists(mask_path) else np.ones_like(img_arr)*255
 
                     try:
-                        if img_arr.shape[0] != target_size or img_arr.shape[1] != target_size:
-                            img_arr_rs  = cv2.resize(img_arr,  (target_size, target_size), interpolation=cv2.INTER_AREA)
-                            mask_arr_rs = cv2.resize(mask_arr, (target_size, target_size), interpolation=cv2.INTER_NEAREST)
-                        else:
-                            img_arr_rs, mask_arr_rs = img_arr, mask_arr
-
-                        regions = ExtractMultipleObjectsFromROI(
-                            img_arr_rs, mask_arr_rs,
-                            targetSize=(target_size, target_size),
-                            cntAreaThreshold=0, sortByX=True,
-                        )
-                        region_to_use = regions[0] if regions else img_arr_rs
-
-                        feat = _extract_region_features(
-                            region_to_use, do_fof, do_glcm, do_glrlm, do_glszm,
-                            normalize, ignore_zeros,
-                            glcm_d, glcm_theta, glcm_sym, glrlm_theta, glszm_conn,
-                        )
+                        img_rs   = cv2.resize(img_arr,  (target_size, target_size), interpolation=cv2.INTER_AREA)
+                        mask_rs  = cv2.resize(mask_arr, (target_size, target_size), interpolation=cv2.INTER_NEAREST)
+                        assert img_rs.shape[0] == target_size and img_rs.shape[1] == target_size,                             f"Resize failed: got {img_rs.shape} expected ({target_size},{target_size})"
+                        regions  = ExtractMultipleObjectsFromROI(img_rs, mask_rs,
+                                       targetSize=(target_size, target_size), cntAreaThreshold=0, sortByX=True)
+                        region   = regions[0] if regions else img_rs
+                        feat     = _extract_region_features(region, do_fof, do_glcm, do_glrlm, do_glszm,
+                                       normalize, ignore_zeros, glcm_d, glcm_theta, glcm_sym, glrlm_theta, glszm_conn)
                         if feat:
                             history.append({"File": img_name, **feat, "Class": cls})
                             processed += 1
                             if not _sample_saved:
                                 try:
                                     _, bb = cv2.imencode(".png", cv2.cvtColor(img_arr, cv2.COLOR_GRAY2BGR) if img_arr.ndim==2 else img_arr)
-                                    _, ab = cv2.imencode(".png", cv2.cvtColor(region_to_use, cv2.COLOR_GRAY2BGR) if region_to_use.ndim==2 else region_to_use)
+                                    _, ab = cv2.imencode(".png", cv2.cvtColor(region, cv2.COLOR_GRAY2BGR) if region.ndim==2 else region)
                                     _sample_before_b64 = base64.b64encode(bb).decode()
                                     _sample_after_b64  = base64.b64encode(ab).decode()
                                     _sample_saved = True
                                 except Exception: pass
                         else:
                             skipped += 1
-
                     except MemoryError:
-                        skipped += 1
-                        print(f"[FE] MemoryError {cls}/{img_name}", flush=True)
+                        skipped += 1; print(f"[FE] MemoryError {cls}/{img_name}", flush=True)
                     except Exception as ex:
                         skipped += 1
-                        if skipped <= 5:
-                            print(f"[FE] Error {cls}/{img_name}: {ex}", flush=True)
+                        if skipped <= 5: print(f"[FE] Error {cls}/{img_name}: {ex}", flush=True)
 
                     done_count += 1
-                    # Send progress every 10 images — keeps browser connection alive
-                    if done_count % 5 == 0 or done_count == total_images:
+                    if True:  # send every single image
                         pct = round(done_count / max(total_images,1) * 100, 1)
                         print(f"[FE] PROGRESS:{done_count}/{total_images}:{pct}:{cls}:{processed}:{skipped}", flush=True)
                         yield f"PROGRESS:{done_count}/{total_images}:{pct}:{cls}:{processed}:{skipped}\n"
 
             if not history:
-                yield 'ERROR:No features extracted. Check dataset structure.\n'; return
+                yield "ERROR:No features extracted. Check dataset structure.\n"; return
 
             feat_df      = pd.DataFrame(history)
-            feature_cols = [c for c in feat_df.columns if c not in ("File", "Class")]
-
+            feature_cols = [c for c in feat_df.columns if c not in ("File","Class")]
             csv_save_path = os.path.join(dataset_dir, output_csv)
             feat_df.to_csv(csv_save_path, index=False)
             print(f"[FE] CSV saved: {csv_save_path}", flush=True)
@@ -448,24 +423,16 @@ def extract_features():
             for c in preview_df.select_dtypes(include=[np.floating]).columns:
                 preview_df[c] = preview_df[c].round(5)
 
-            sample_csv_b64 = base64.b64encode(feat_df.to_csv(index=False).encode()).decode()
+            csv_b64 = base64.b64encode(feat_df.to_csv(index=False).encode()).decode()
             key = str(uuid.uuid4())
             SESSION[key] = {"feat_df": feat_df, "type": "features"}
 
-            resp = {
-                "processed":      processed,
-                "skipped":        skipped,
-                "classes":        class_dirs,
-                "total_rows":     len(feat_df),
-                "total_features": len(feature_cols),
-                "preview":        preview_df.to_dict(orient="records"),
-                "csv_b64":        sample_csv_b64,
-                "csv_path":       csv_save_path,
-                "session_key":    key,
-            }
+            resp = {"processed": processed, "skipped": skipped, "classes": class_dirs,
+                    "total_rows": len(feat_df), "total_features": len(feature_cols),
+                    "preview": preview_df.to_dict(orient="records"),
+                    "csv_b64": csv_b64, "csv_path": csv_save_path, "session_key": key}
             if _sample_before_b64: resp["sample_before_b64"] = _sample_before_b64
             if _sample_after_b64:  resp["sample_after_b64"]  = _sample_after_b64
-
             yield "RESULTS_JSON:" + json.dumps(resp) + "\n"
 
         except Exception as ex:
@@ -473,7 +440,7 @@ def extract_features():
             yield f"ERROR:{str(ex)}\n"
 
     return Response(stream_with_context(_stream()), mimetype="text/plain",
-                    headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+                    headers={"X-Accel-Buffering":"no","Cache-Control":"no-cache"})
 
 
 @app.route("/debug_dataset", methods=["POST"])
@@ -573,10 +540,11 @@ def train_ml():
         target_col    = request.form.get("target_column",     "Class")
         drop_first    = request.form.get("drop_first",        "true").lower() == "true"
         test_ratio    = float(request.form.get("test_ratio",  0.2))
-        model_choice  = request.form.get("model",             "MLP")
+        model_choice  = request.form.get("model",             "RF")
         scaler_choice = request.form.get("scaler",            "") or None
         fs_tech       = request.form.get("feature_selection", "") or None
-        fs_ratio      = int(request.form.get("fs_ratio",      80))
+        fs_ratio     = int(request.form.get("fs_ratio", 80)) / 100.0  # V3 expects 0.0-1.0
+        data_balance = request.form.get("data_balance", "") or None
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
             tmp.write(train_file.read())
@@ -588,10 +556,11 @@ def train_ml():
                 tmp.write(test_file.read())
                 test_path = tmp.name
 
-        print(f"[ML] {model_choice} scaler={scaler_choice} fs={fs_tech}", flush=True)
+        print(f"[ML] V3 | {model_choice} scaler={scaler_choice} fs={fs_tech}({fs_ratio}) balance={data_balance}", flush=True)
 
-        metrics, plt_obj, objects = MachineLearningClassificationV2(
+        metrics, plt_obj, objects = MachineLearningClassificationV3(
             train_path, scaler_choice, model_choice, fs_tech, fs_ratio,
+            dataBalanceTech=data_balance,
             testRatio=test_ratio, testFilePath=test_path,
             targetColumn=target_col, dropFirstColumn=drop_first,
         )
@@ -608,19 +577,18 @@ def train_ml():
         pkl_b64 = base64.b64encode(pickle.dumps(objects)).decode()
         # Also store the target_size used during training inside objects
         # so prediction can use the exact same resize dimensions
-        # Store the target_size used during feature extraction so predict_ml uses the same
-        # Frontend sends target_size_used; fall back to reading from CSV column names if missing
-        _ts = request.form.get("target_size_used", "").strip()
-        objects["_target_size"] = int(_ts) if _ts.isdigit() else 128
+        objects["_target_size"] = int(request.form.get("target_size_used", 128))
         key     = str(uuid.uuid4())
         SESSION[key] = {"objects": objects, "type": "ml_model"}
 
         scalar_metrics = {}
-        for k in ["Macro Accuracy","Macro Precision","Macro Recall","Macro F1",
-                  "Weighted Accuracy","Weighted Precision","Weighted Recall","Weighted F1",
-                  "Micro Accuracy"]:
-            if k in metrics and np.isscalar(metrics[k]):
-                scalar_metrics[k] = float(metrics[k])
+        for k, v in metrics.items():
+            try:
+                if np.isscalar(v) and not isinstance(v, (str, bool)):
+                    scalar_metrics[k] = float(v)
+            except Exception:
+                pass
+        print(f"[ML] Metrics returned: {list(scalar_metrics.keys())}", flush=True)
 
         for p in [train_path, test_path]:
             try:
@@ -638,6 +606,146 @@ def train_ml():
     except Exception as ex:
         traceback.print_exc()
         return jsonify({"error": str(ex)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  TAB 2 — GRID SEARCH (all models × all scalers)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/grid_search_ml", methods=["POST"])
+def grid_search_ml():
+    ALL_MODELS  = ["MLP","RF","AB","KNN","DT","ETs","SGD","SVC","GNB","LR","GB"]
+    ALL_SCALERS = ["Standard","MinMax","Robust","Normalizer","MaxAbs","QT"]
+
+    train_file = request.files.get("train_csv")
+    if not train_file:
+        return jsonify({"error": "No training CSV uploaded."}), 400
+
+    test_file    = request.files.get("test_csv")
+    target_col   = request.form.get("target_column",     "Class")
+    drop_first   = request.form.get("drop_first",        "true").lower() == "true"
+    test_ratio   = float(request.form.get("test_ratio",  0.2))
+    fs_tech      = request.form.get("feature_selection", "") or None
+    fs_ratio     = int(request.form.get("fs_ratio",      80)) / 100.0
+    data_balance = request.form.get("data_balance",      "") or None
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+        tmp.write(train_file.read())
+        train_path = tmp.name
+
+    test_path = None
+    if test_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+            tmp.write(test_file.read())
+            test_path = tmp.name
+
+    rank_metric  = request.form.get("rank_metric", "Weighted Average").strip()
+    total_combos = len(ALL_MODELS) * len(ALL_SCALERS)
+    print(f"[GS] Starting grid search: {len(ALL_MODELS)} models x {len(ALL_SCALERS)} scalers = {total_combos} combos | rank_by={rank_metric}", flush=True)
+
+    def _stream():
+        history      = []
+        done_count   = 0
+        best_score   = -1.0
+        best_metrics = best_plt = best_objects = None
+        best_model_name = best_scaler_name = ""
+
+        for model_name in ALL_MODELS:
+            for scaler_name in ALL_SCALERS:
+                try:
+                    m, p, o = MachineLearningClassificationV3(
+                        train_path, scaler_name, model_name, fs_tech, fs_ratio,
+                        dataBalanceTech=data_balance,
+                        testRatio=test_ratio, testFilePath=test_path,
+                        targetColumn=target_col, dropFirstColumn=drop_first,
+                    )
+                    # Extract all scalar metrics first
+                    scalar_m = {}
+                    for k, v in m.items():
+                        try:
+                            if np.isscalar(v) and not isinstance(v, (str, bool)):
+                                scalar_m[k] = float(v)
+                        except Exception:
+                            pass
+
+                    # Ranking criterion: chosen by user, fallback chain if key missing
+                    fallbacks = ["Weighted Average","Weighted F1","Macro F1","Macro Accuracy"]
+                    score = scalar_m.get(rank_metric, None)
+                    if score is None:
+                        for fb in fallbacks:
+                            if fb in scalar_m:
+                                score = scalar_m[fb]; break
+                    score = float(score or 0.0)
+
+                    history.append({"Model": model_name, "Scaler": scaler_name,
+                                    "Weighted Avg": score,
+                                    "Macro F1":     scalar_m.get("Macro F1", 0),
+                                    "Macro Accuracy": scalar_m.get("Macro Accuracy", 0)})
+
+                    if score > best_score:
+                        best_score = score
+                        best_metrics  = scalar_m   # exact same dict used for response
+                        best_plt      = p
+                        best_objects  = o
+                        best_model_name, best_scaler_name = model_name, scaler_name
+
+                    print(f"[GS] {model_name}+{scaler_name}: score={score:.4f} (best={best_score:.4f})", flush=True)
+
+                except Exception as ex:
+                    print(f"[GS] {model_name}+{scaler_name} failed: {ex}", flush=True)
+                    history.append({"Model": model_name, "Scaler": scaler_name,
+                                    "Weighted Avg": 0, "Macro F1": 0, "Macro Accuracy": 0})
+
+                done_count += 1
+                pct = round(done_count / total_combos * 100, 1)
+                yield f"GRID_PROGRESS:{done_count}/{total_combos}:{pct}:{model_name}:{scaler_name}:{best_score}\n"
+
+        # Sort leaderboard
+        history.sort(key=lambda x: x.get("Weighted Avg", 0), reverse=True)
+
+        if not best_objects:
+            yield "RESULTS_JSON:" + json.dumps({"error": "All combinations failed."}) + "\n"
+            return
+
+        # Store _target_size in best objects
+        _ts = request.form.get("target_size_used", "").strip()
+        best_objects["_target_size"] = int(_ts) if _ts.isdigit() else 128
+
+        key = str(uuid.uuid4())
+        SESSION[key] = {"objects": best_objects, "type": "ml_model"}
+
+        pkl_b64 = base64.b64encode(pickle.dumps(best_objects)).decode()
+        cm_b64  = None
+        if best_plt is not None:
+            try:
+                cm_b64 = _fig_to_b64(best_plt)
+                plt.close("all")
+            except Exception:
+                pass
+
+        resp = {
+            "best_model":          best_model_name,
+            "best_scaler":         best_scaler_name,
+            "best_score":          best_score,
+            "rank_metric":         rank_metric,
+            "metrics":             best_metrics,
+            "leaderboard":         history,
+            "pkl_b64":             pkl_b64,
+            "confusion_matrix_b64":cm_b64,
+            "session_key":         key,
+        }
+        print(f"[GS] Done. Best: {best_model_name}+{best_scaler_name} = {best_score:.4f}", flush=True)
+        yield "RESULTS_JSON:" + json.dumps(resp) + "\n"
+
+        # Cleanup temp files
+        for p_path in [train_path, test_path]:
+            try:
+                if p_path: os.unlink(p_path)
+            except Exception:
+                pass
+
+    return Response(stream_with_context(_stream()), mimetype="text/plain",
+                    headers={"X-Accel-Buffering":"no","Cache-Control":"no-cache"})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -821,18 +929,16 @@ def predict_ml():
             mask = np.ones_like(img) * 255
             print(f"[PRED] No mask — using full white mask (same as training fallback)", flush=True)
 
-        # Use the target_size stored in the pkl from training time.
-        # If missing (old pkl), try to infer from the request, then fall back to 128.
-        _ts_override = request.form.get("target_size", "").strip()
+        # Always go through ExtractMultipleObjectsFromROI — same as training pipeline
+        # Use same target_size as training (stored in pkl, default 128)
+        _ts_override = request.form.get("target_size","").strip()
         if _ts_override.isdigit():
             pred_target_size = int(_ts_override)
         else:
             pred_target_size = objects.get("_target_size", None)
             if pred_target_size is None:
-                # Last resort: use the smaller image dimension as a reasonable default
-                pred_target_size = min(img.shape[:2])
-                pred_target_size = min(pred_target_size, 512)  # cap at 512
-                print(f"[PRED] _target_size missing from pkl — inferred {pred_target_size} from image", flush=True)
+                pred_target_size = min(min(img.shape[:2]), 512)
+                print(f"[PRED] _target_size missing — inferred {pred_target_size}", flush=True)
         pred_target_size = int(pred_target_size)
         print(f"[PRED] Using target_size={pred_target_size}", flush=True)
         try:
@@ -847,6 +953,7 @@ def predict_ml():
                 region = regs[0]
                 print(f"[PRED] ROI extracted: {region.shape}", flush=True)
             else:
+                # No contours found — fall back to plain resize
                 region = cv2.resize(img, (pred_target_size, pred_target_size))
                 print(f"[PRED] No ROI found — using plain resize", flush=True)
         except Exception as roi_err:
@@ -998,17 +1105,7 @@ def predict_cnn():
             with open(ci_path) as f:
                 ci_data = json.load(f)
             class_indices = ci_data.get("class_indices", {})
-            # input_shape stored as [H, W, C] — use H as the resize target
-            _shape = ci_data.get("input_shape", None)
-            if _shape and len(_shape) >= 2:
-                input_hw = int(_shape[0])   # use stored H from training
-            # If model has a known input shape, use that as ground truth
-            try:
-                model_input = cnn_model.input_shape  # (None, H, W, C)
-                if model_input and len(model_input) == 4:
-                    input_hw = int(model_input[1])
-            except Exception:
-                pass
+            input_hw = int(ci_data.get("input_shape", [input_hw])[0])
         elif class_labels_raw:
             labels = [l.strip() for l in class_labels_raw.split(",") if l.strip()]
             class_indices = {l: i for i, l in enumerate(labels)}
@@ -1040,29 +1137,17 @@ def predict_cnn():
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
-
     print("=" * 55)
     print("  NEXUS Flask API v2.3  —  http://localhost:5000")
     print("=" * 55)
-
-    # Try waitress first (no request timeout, production-grade)
-    # If not installed, fall back to Flask dev server with extended timeout
+    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
     try:
         from waitress import serve
         print("  Using waitress WSGI server (no timeout limits)", flush=True)
-        serve(app, host="127.0.0.1", port=5000, threads=4,
-              channel_timeout=3600,   # 1 hour max per request
-              cleanup_interval=30)
+        serve(app, host="127.0.0.1", port=5000, threads=4, channel_timeout=3600)
     except ImportError:
-        print("  waitress not found — installing...", flush=True)
         import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "waitress", "--quiet"],
+        subprocess.check_call([sys.executable,"-m","pip","install","waitress","--quiet"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        try:
-            from waitress import serve
-            print("  Using waitress WSGI server", flush=True)
-            serve(app, host="127.0.0.1", port=5000, threads=4, channel_timeout=3600)
-        except Exception:
-            print("  Falling back to Flask dev server", flush=True)
-            app.run(host="127.0.0.1", port=5000, debug=False, threaded=True, use_reloader=False)
+        from waitress import serve
+        serve(app, host="127.0.0.1", port=5000, threads=4, channel_timeout=3600)
