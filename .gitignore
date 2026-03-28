@@ -1,0 +1,44 @@
+# =============================================================
+#  NEXUS — AI Radiomics Platform  |  .gitignore
+# =============================================================
+
+# ── Bundled Python / Conda runtime (very large — do not commit) ──
+be645/
+
+# ── Python bytecode ──
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Virtual environments ──
+venv/
+env/
+.venv/
+ENV/
+
+# ── Trained model artefacts (can be large) ──
+*.pkl
+*.keras
+*.h5
+CNN_Output/
+
+# ── Extracted feature CSVs (generated at runtime) ──
+extracted_features.csv
+*.csv
+
+# ── OS / editor junk ──
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Temporary CNN training script (generated at runtime) ──
+_cnn_train.py
+
+# ── Session / log files ──
+*.log

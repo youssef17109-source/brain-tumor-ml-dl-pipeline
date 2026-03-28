@@ -1,0 +1,2669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS — AI Radiomics Intelligence Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+  :root {
+    --bg-deep: #04040d;
+    --bg-card: rgba(255,255,255,0.03);
+    --purple: #7f5af0;
+    --green: #2cb67d;
+    --blue: #00d4ff;
+    --pink: #ff2d78;
+    --orange: #ff8906;
+    --text: #e8e8f0;
+    --muted: #6b7280;
+    --border: rgba(127,90,240,0.2);
+    --glow-purple: 0 0 30px rgba(127,90,240,0.4);
+    --glow-blue: 0 0 30px rgba(0,212,255,0.4);
+    --glow-green: 0 0 30px rgba(44,182,125,0.4);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(127,90,240,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(127,90,240,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none; z-index: 0;
+  }
+  .z1 { position: relative; z-index: 1; }
+
+  /* NAV */
+  nav {
+    position: fixed; top:0; left:0; right:0; z-index:100;
+    padding: 14px 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(4,4,13,0.85); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-logo {
+    font-family: 'Space Mono', monospace; font-size:16px; font-weight:700; letter-spacing:4px;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    display:flex; align-items:center; gap:10px;
+  }
+  .nav-dot {
+    width:8px; height:8px; background:var(--green); border-radius:50%;
+    box-shadow:0 0 12px var(--green); animation: pdot 2s ease-in-out infinite;
+    -webkit-text-fill-color:initial; flex-shrink:0;
+  }
+  @keyframes pdot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.7)} }
+
+  .nav-status {
+    display:flex; align-items:center; gap:6px;
+    font-family:'Space Mono',monospace; font-size:10px; letter-spacing:2px; color:var(--muted);
+  }
+  .api-dot { width:6px; height:6px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+  .api-dot.online { background:var(--green); box-shadow:0 0 8px var(--green); animation:pdot 2s infinite; }
+  .api-dot.error  { background:var(--pink); box-shadow:0 0 8px var(--pink); }
+
+  /* HERO */
+  .hero {
+    min-height:72vh; display:flex; align-items:center; justify-content:center;
+    padding: 88px 40px 12px; text-align:center; flex-direction:column;
+  }
+  .hero-tag {
+    display:inline-block; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:3px;
+    color:var(--green); border:1px solid rgba(44,182,125,0.4); padding:5px 14px;
+    border-radius:100px; margin-bottom:24px; background:rgba(44,182,125,0.05);
+  }
+  .hero h1 { font-family:'Space Mono',monospace; font-size:clamp(24px,4.5vw,54px); font-weight:700; line-height:1.1; margin-bottom:16px; }
+  .hero h1 .l1 { display:block; background:linear-gradient(135deg,#fff,var(--blue)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .hero h1 .l2 { display:block; background:linear-gradient(135deg,var(--purple),var(--pink)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .hero p { font-size:16px; color:var(--muted); max-width:520px; margin:0 auto 18px; line-height:1.7; font-weight:300; }
+  .brain-wrap { position:relative; display:inline-block; width:500px; height:380px; max-width:90vw; cursor:grab; }
+  .brain-wrap:active { cursor:grabbing; }
+  .brain-ring {
+    position:absolute; top:50%; left:50%; border-radius:50%;
+    border:1px solid rgba(0,212,255,0.12); transform:translate(-50%,-50%);
+    animation:ring 3s ease-in-out infinite;
+  }
+  .brain-ring:nth-child(1){width:320px;height:320px;animation-delay:0s}
+  .brain-ring:nth-child(2){width:400px;height:400px;animation-delay:.6s;border-color:rgba(127,90,240,.08)}
+  .brain-ring:nth-child(3){width:480px;height:480px;animation-delay:1.2s;border-color:rgba(44,182,125,.05)}
+  @keyframes ring{0%,100%{opacity:.5;transform:translate(-50%,-50%) scale(1)} 50%{opacity:1;transform:translate(-50%,-50%) scale(1.015)}}
+  /* brainCanvas replaced by Three.js renderer */
+
+  /* TABS */
+  .tabs-wrap { padding:0 40px 0; position:relative; z-index:1; margin-top:-18px; }
+  .tabs-nav {
+    display:flex; gap:4px; background:rgba(255,255,255,0.03); border:1px solid var(--border);
+    border-radius:12px; padding:5px; max-width:760px; margin:0 auto 36px; backdrop-filter:blur(10px);
+  }
+  .tab-btn {
+    flex:1; padding:11px 12px; background:transparent; border:none; color:var(--muted);
+    font-family:'Space Mono',monospace; font-size:10px; letter-spacing:1.5px; cursor:pointer;
+    border-radius:8px; transition:all .3s; white-space:nowrap;
+  }
+  .tab-btn.active {
+    background:linear-gradient(135deg,rgba(127,90,240,.3),rgba(0,212,255,.2));
+    color:var(--blue); box-shadow:0 0 20px rgba(0,212,255,.2);
+    border:1px solid rgba(0,212,255,.3);
+  }
+  .tab-btn:hover:not(.active){ color:var(--text); background:rgba(255,255,255,.05); }
+
+  /* PANELS */
+  .tab-panel { display:none; max-width:1200px; margin:0 auto; padding:0 40px 80px; animation:fiu .4s ease; }
+  .tab-panel.active { display:block; }
+  @keyframes fiu{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+  /* GLASS CARD */
+  .card {
+    background:var(--bg-card); border:1px solid var(--border); border-radius:16px;
+    padding:24px; backdrop-filter:blur(20px); margin-bottom:20px;
+    transition:border-color .3s, box-shadow .3s;
+  }
+  .card:hover{border-color:rgba(0,212,255,.25); box-shadow:var(--glow-blue);}
+  .card-label { font-family:'Space Mono',monospace; font-size:9px; letter-spacing:3px; color:var(--muted); margin-bottom:14px; text-transform:uppercase; }
+
+  /* SECTION HEADER */
+  .sec-hdr { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
+  .sec-hdr h2 { font-family:'Space Mono',monospace; font-size:18px; letter-spacing:2px; background:linear-gradient(135deg,var(--text),var(--blue)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .sec-dot { width:10px; height:10px; background:var(--green); border-radius:50%; box-shadow:0 0 14px var(--green); animation:pdot 2s infinite; flex-shrink:0; }
+
+  /* INPUTS */
+  .lbl { font-family:'Space Mono',monospace; font-size:9px; letter-spacing:2px; color:var(--muted); display:block; margin-bottom:6px; text-transform:uppercase; }
+  .inp {
+    width:100%; padding:12px 14px; background:rgba(255,255,255,.04); border:1px solid var(--border);
+    border-radius:8px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:13px;
+    outline:none; transition:border-color .3s, box-shadow .3s;
+  }
+  .inp:focus,.inp:hover { border-color:var(--purple); box-shadow:0 0 18px rgba(127,90,240,.2); }
+  .inp option { background:#0d0d20; }
+
+  /* TOGGLES */
+  .feat-toggle {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 20px; background:rgba(255,255,255,.02); border:1px solid var(--border);
+    border-radius:10px; cursor:pointer; transition:all .3s; user-select:none;
+  }
+  .feat-toggle:hover { border-color:var(--purple); background:rgba(127,90,240,.05); }
+  .feat-toggle.on { border-color:var(--blue); background:rgba(0,212,255,.05); box-shadow:0 0 16px rgba(0,212,255,.08); }
+  .feat-name { font-family:'Space Mono',monospace; font-size:12px; font-weight:700; letter-spacing:2px; }
+  .feat-desc { font-size:11px; color:var(--muted); margin-top:3px; }
+  .sw { width:42px; height:22px; background:rgba(255,255,255,.1); border-radius:100px; position:relative; transition:background .3s; flex-shrink:0; }
+  .sw::after { content:''; position:absolute; width:16px; height:16px; background:var(--muted); border-radius:50%; top:3px; left:3px; transition:transform .3s, background .3s; }
+  .feat-toggle.on .sw { background:rgba(0,212,255,.3); }
+  .feat-toggle.on .sw::after { background:var(--blue); transform:translateX(20px); box-shadow:0 0 10px var(--blue); }
+
+  /* CHECKBOX */
+  .chk-row { display:flex; align-items:center; gap:10px; margin:8px 0; cursor:pointer; }
+  .chk-box {
+    width:18px; height:18px; border:1px solid var(--border); border-radius:4px;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    transition:all .2s; font-size:10px;
+  }
+  .chk-row.on .chk-box { background:rgba(0,212,255,.2); border-color:var(--blue); color:var(--blue); box-shadow:0 0 10px rgba(0,212,255,.2); }
+  .chk-txt { font-size:13px; color:var(--muted); }
+  .chk-row.on .chk-txt { color:var(--text); }
+
+  /* GRID LAYOUTS */
+  .g2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; }
+  .g4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+
+  /* METRIC */
+  .metric { text-align:center; padding:18px 12px; background:rgba(255,255,255,.02); border:1px solid var(--border); border-radius:10px; }
+  .metric-val { font-family:'Space Mono',monospace; font-size:26px; margin-bottom:4px; }
+  .metric-lbl { font-size:10px; letter-spacing:2px; color:var(--muted); font-family:'Space Mono',monospace; }
+
+  /* SLIDER */
+  .slider-row { margin-bottom:18px; }
+  .slider-hdr { display:flex; justify-content:space-between; margin-bottom:8px; }
+  .slider-lbl { font-family:'Space Mono',monospace; font-size:9px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; }
+  .slider-val { font-family:'Space Mono',monospace; font-size:11px; color:var(--blue); }
+  input[type="range"] { -webkit-appearance:none; width:100%; height:3px; background:rgba(255,255,255,.1); border-radius:100px; outline:none; cursor:pointer; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; background:var(--blue); border-radius:50%; box-shadow:0 0 12px var(--blue); cursor:pointer; transition:transform .2s; }
+  input[type="range"]:hover::-webkit-slider-thumb { transform:scale(1.25); }
+
+  /* BUTTONS */
+  .run-btn {
+    width:100%; padding:15px; background:linear-gradient(135deg,var(--purple),var(--blue));
+    border:none; border-radius:10px; color:white; font-family:'Space Mono',monospace;
+    font-size:12px; letter-spacing:2px; cursor:pointer; transition:transform .2s, box-shadow .2s;
+    box-shadow:var(--glow-purple); margin-top:6px;
+  }
+  .run-btn:hover { transform:translateY(-2px); box-shadow:0 8px 36px rgba(127,90,240,.5); }
+  .run-btn:active { transform:translateY(0); }
+  .run-btn:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+
+  /* UPLOAD ZONE */
+  .upload-zone {
+    border:2px dashed rgba(127,90,240,.35); border-radius:14px; padding:50px 30px;
+    text-align:center; cursor:pointer; transition:all .3s; background:rgba(127,90,240,.03);
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color:var(--blue); background:rgba(0,212,255,.04); }
+  .upload-icon { width:56px; height:56px; background:linear-gradient(135deg,var(--purple),var(--blue)); border-radius:14px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; font-size:24px; }
+  .upload-title { font-family:'Space Mono',monospace; font-size:14px; letter-spacing:1px; margin-bottom:6px; }
+  .upload-sub { font-size:12px; color:var(--muted); }
+
+  /* ALERT BOXES */
+  .alert { padding:12px 16px; border-radius:8px; font-size:13px; margin-bottom:14px; display:flex; align-items:flex-start; gap:10px; }
+  .alert-info  { background:rgba(0,212,255,.08); border:1px solid rgba(0,212,255,.25); color:var(--blue); }
+  .alert-ok    { background:rgba(44,182,125,.08); border:1px solid rgba(44,182,125,.25); color:var(--green); }
+  .alert-err   { background:rgba(255,45,120,.08); border:1px solid rgba(255,45,120,.25); color:var(--pink); }
+  .alert-warn  { background:rgba(255,137,6,.08); border:1px solid rgba(255,137,6,.25); color:var(--orange); }
+  .alert-icon  { font-size:15px; flex-shrink:0; margin-top:1px; }
+
+  /* PROGRESS */
+  .prog-wrap { margin:14px 0; }
+  .prog-top { display:flex; justify-content:space-between; font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); margin-bottom:7px; letter-spacing:1px; text-transform:uppercase; }
+  .prog-bg { height:6px; background:rgba(255,255,255,.06); border-radius:100px; overflow:hidden; }
+  .prog-fill { height:100%; border-radius:100px; transition:width .8s cubic-bezier(.16,1,.3,1); background:linear-gradient(90deg,var(--purple),var(--blue)); position:relative; }
+  .prog-fill::after { content:''; position:absolute; right:0; top:50%; transform:translateY(-50%); width:10px; height:10px; background:white; border-radius:50%; box-shadow:0 0 14px var(--blue); }
+
+  /* LOG */
+  .log-box {
+    background:rgba(0,0,0,.5); border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; font-family:'Space Mono',monospace; font-size:10px; line-height:1.7;
+    color:#8b8baa; max-height:200px; overflow-y:auto; letter-spacing:.5px; white-space:pre-wrap;
+  }
+  .log-box .log-ok  { color:var(--green); }
+  .log-box .log-err { color:var(--pink); }
+  .log-box .log-info{ color:var(--blue); }
+
+  /* PREDICTION BARS */
+  .pred-row { margin-bottom:14px; }
+  .pred-hdr { display:flex; justify-content:space-between; margin-bottom:7px; }
+  .pred-name { font-family:'Space Mono',monospace; font-size:12px; }
+  .pred-pct  { font-family:'Space Mono',monospace; font-size:12px; color:var(--green); }
+  .pred-bg   { height:7px; background:rgba(255,255,255,.05); border-radius:100px; overflow:hidden; }
+  .pred-fill { height:100%; border-radius:100px; transition:width 1.4s cubic-bezier(.16,1,.3,1); }
+
+  /* CANVAS */
+  #nnCanvas  { width:100%; height:480px; border-radius:12px; background:rgba(0,0,0,.35); border:1px solid var(--border); }
+  #brainML {
+    position: fixed; top:0; left:0;
+    width:100vw; height:100vh;
+    pointer-events:none; z-index:0;
+    opacity:0; transition:opacity 0.6s ease;
+  }
+  #brainML.ml-bg-active { opacity:1; }
+  #tab-ml .card { background:rgba(4,4,13,0.55) !important; backdrop-filter:blur(12px); }
+
+  /* STATUS STRIP */
+  .status-strip {
+    display:flex; align-items:center; gap:20px; padding:12px 20px;
+    background:rgba(0,0,0,.45); border:1px solid var(--border); border-radius:8px; margin-bottom:20px;
+    font-family:'Space Mono',monospace; font-size:9px; letter-spacing:1.5px; flex-wrap:wrap; gap:12px;
+  }
+  .ss-item { display:flex; align-items:center; gap:7px; color:var(--muted); }
+  .ss-dot  { width:5px; height:5px; border-radius:50%; background:var(--green); box-shadow:0 0 7px var(--green); animation:pdot 2s infinite; }
+  .ss-dot.b{ background:var(--blue); box-shadow:0 0 7px var(--blue); }
+
+  /* DATASET PATH INPUT */
+  .path-input { font-family:'Space Mono',monospace; font-size:11px; letter-spacing:1px; }
+
+  /* TABLE */
+  .feat-table { width:100%; border-collapse:collapse; font-size:11px; margin-top:8px; }
+  .feat-table th { font-family:'Space Mono',monospace; letter-spacing:1px; color:var(--muted); font-size:9px; text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); }
+  .feat-table td { padding:7px 10px; border-bottom:1px solid rgba(255,255,255,.04); color:var(--text); font-family:'Space Mono',monospace; font-size:10px; }
+  .feat-table tr:hover td { background:rgba(127,90,240,.04); }
+
+  /* SELECT MULTI TAG */
+  .multi-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .tag {
+    font-family:'Space Mono',monospace; font-size:9px; letter-spacing:1px; padding:4px 10px;
+    background:rgba(127,90,240,.12); border:1px solid rgba(127,90,240,.3); border-radius:100px; cursor:pointer; color:var(--muted); transition:all .2s;
+  }
+  .tag.sel { background:rgba(0,212,255,.15); border-color:var(--blue); color:var(--blue); }
+
+  /* EXPANDER */
+  .expander { margin:8px 0; }
+  .exp-hdr { display:flex; align-items:center; gap:8px; cursor:pointer; padding:10px 14px; background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:8px; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:1px; color:var(--muted); transition:all .2s; }
+  .exp-hdr:hover { color:var(--blue); border-color:rgba(0,212,255,.3); }
+  .exp-arrow { font-size:8px; transition:transform .3s; }
+  .exp-body  { display:none; padding:14px; background:rgba(0,0,0,.2); border:1px solid var(--border); border-top:none; border-radius:0 0 8px 8px; }
+  .expander.open .exp-arrow { transform:rotate(90deg); }
+  .expander.open .exp-body  { display:block; }
+
+  /* FEATURE EXTRACTION STEPS */
+  .fe-step {
+    display:flex; align-items:center; gap:6px;
+    font-family:'Space Mono',monospace; font-size:9px; letter-spacing:1.5px;
+    color:var(--muted); padding:6px 12px;
+    background:rgba(255,255,255,0.03); border:1px solid var(--border);
+    border-radius:100px; transition:all 0.3s;
+  }
+  .fe-step.active {
+    color:var(--blue); border-color:rgba(0,212,255,0.4);
+    background:rgba(0,212,255,0.08); box-shadow:0 0 12px rgba(0,212,255,0.15);
+  }
+  .fe-step.done {
+    color:var(--green); border-color:rgba(44,182,125,0.4);
+    background:rgba(44,182,125,0.08);
+  }
+  .step-dot {
+    width:6px; height:6px; border-radius:50%;
+    background:var(--muted); transition:all 0.3s; flex-shrink:0;
+  }
+  .fe-step.active .step-dot {
+    background:var(--blue); box-shadow:0 0 8px var(--blue);
+    animation:pdot 1s ease-in-out infinite;
+  }
+  .fe-step.done .step-dot { background:var(--green); box-shadow:0 0 8px var(--green); }
+
+  .fe-stat {
+    text-align:center; padding:10px 8px;
+    background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px;
+  }
+  .ls-val {
+    font-family:'Space Mono',monospace; font-size:16px; color:var(--blue);
+    margin-bottom:4px; font-weight:700;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .ls-lbl { font-size:8px; letter-spacing:2px; color:var(--muted); font-family:'Space Mono',monospace; }
+
+  /* 3D NEURON PROGRESS BAR */
+  .neuron-prog-canvas {
+    width: 100%;
+    height: 150px;
+    background: transparent;
+    border-radius: 0;
+    border: none;
+    overflow: visible;
+    position: relative;
+    box-shadow: none;
+    margin-bottom: 4px;
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width:5px; height:5px; }
+  ::-webkit-scrollbar-track { background:var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background:rgba(127,90,240,.3); border-radius:3px; }
+
+  /* DOWNLOAD BTN */
+  .dl-btn {
+    display:inline-flex; align-items:center; gap:8px; padding:10px 20px;
+    background:rgba(44,182,125,.1); border:1px solid rgba(44,182,125,.3); border-radius:8px;
+    color:var(--green); font-family:'Space Mono',monospace; font-size:10px; letter-spacing:1.5px;
+    cursor:pointer; text-decoration:none; transition:all .2s; margin-top:10px;
+  }
+  .dl-btn:hover { background:rgba(44,182,125,.18); box-shadow:var(--glow-green); }
+
+  /* CODE BLOCK */
+  .code-block {
+    background:rgba(0,0,0,.5); border:1px solid var(--border); border-radius:8px; padding:12px 16px;
+    font-family:'Space Mono',monospace; font-size:10px; color:#8b8baa; line-height:1.6; white-space:pre;
+  }
+
+  @media(max-width:960px){
+    nav{padding:12px 18px;}
+    .hero{min-height:auto;padding:80px 18px 8px;}
+    .tabs-wrap{padding:0 18px 0;margin-top:-8px;}
+    .tab-panel{padding:0 18px 60px;}
+    .g2,.g3,.g4{grid-template-columns:1fr;}
+    .brain-wrap{width:100%;height:300px;}
+    .brain-ring:nth-child(2),.brain-ring:nth-child(3){display:none;}
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">
+    <div class="nav-dot"></div>
+    NEXUS
+  </div>
+  <div class="nav-status">
+    <div class="api-dot" id="apiDot"></div>
+    <span id="apiStatus">CHECKING API…</span>
+  </div>
+  <button class="run-btn" style="width:auto;padding:9px 20px;font-size:10px;margin:0;" onclick="checkAPI()">PING SERVER</button>
+</nav>
+
+<!-- HERO — compact title only, brain moves into Tab 1 center column -->
+<section class="hero z1" style="min-height:auto;padding:88px 40px 18px;">
+  <div class="hero-tag">◈ RADIOMICS INTELLIGENCE SYSTEM v2.4</div>
+  <h1>
+    <span class="l1">AI RADIOMICS</span>
+    <span class="l2">INTELLIGENCE PLATFORM</span>
+  </h1>
+  <p style="margin-bottom:0;">From Features to Deep Learning — Visualized.</p>
+</section>
+
+<!-- TABS NAV -->
+<div class="tabs-wrap z1">
+  <div class="tabs-nav">
+    <button class="tab-btn active" onclick="switchTab('fe',this)">🔬 FEATURE EXTRACTION</button>
+    <button class="tab-btn" onclick="switchTab('ml',this)">🤖 ML CLASSIFICATION</button>
+    <button class="tab-btn" onclick="switchTab('dl',this)">🧠 DEEP LEARNING</button>
+    <button class="tab-btn" onclick="switchTab('pred',this)">🎯 PREDICT</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     TAB 1 — FEATURE EXTRACTION
+═══════════════════════════════════════════════════ -->
+<div id="tab-fe" class="tab-panel active z1">
+
+  <div class="status-strip">
+    <div class="ss-item"><div class="ss-dot"></div>ENGINE READY</div>
+    <div class="ss-item"><div class="ss-dot b"></div><span id="fe-feat-count">0 FEATURES ACTIVE</span></div>
+    <div class="ss-item"><div class="ss-dot"></div>FOF / GLCM / GLRLM / GLSZM</div>
+  </div>
+
+  <div class="sec-hdr">
+    <div class="sec-dot"></div>
+    <h2>FEATURE EXTRACTION</h2>
+  </div>
+
+  <!-- 3-column layout: left=config | center=brain | right=features -->
+  <div style="display:grid; grid-template-columns:280px 1fr 280px; gap:18px; margin-bottom:18px; align-items:start;">
+
+    <!-- LEFT: dataset config -->
+    <div>
+      <div class="card" style="padding:18px;">
+        <div class="card-label">Dataset Config</div>
+
+        <div class="expander" id="exp-struct">
+          <div class="exp-hdr" onclick="toggleExp('exp-struct')">
+            <span class="exp-arrow">▶</span> 📁 Folder Structure
+          </div>
+          <div class="exp-body">
+            <div class="code-block" style="font-size:9px;">Dataset\
+├── benign\
+│  ├── 001.png
+│  ├── 001_mask.png
+├── malignant\
+└── normal\</div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <label class="lbl">Dataset Root Folder</label>
+          <input id="fe-dataset" class="inp path-input" type="text" placeholder="/path/to/Dataset" oninput="resetFEResult()" style="font-size:11px;">
+        </div>
+        <div style="margin-top:10px;">
+          <label class="lbl">Output CSV</label>
+          <input id="fe-csv" class="inp" type="text" value="extracted_features.csv" style="font-size:11px;">
+        </div>
+        <div style="margin-top:10px;">
+          <label class="lbl">Target Resize (px)</label>
+          <select id="fe-size" class="inp" style="font-size:11px;">
+            <option value="64">64</option>
+            <option value="128" selected>128</option>
+            <option value="192">192</option>
+            <option value="256">256</option>
+            <option value="512">512</option>
+          </select>
+        </div>
+        <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+          <div class="chk-row on" id="chk-ignzero" onclick="toggleChk(this)">
+            <div class="chk-box">✓</div>
+            <span class="chk-txt" style="font-size:11px;">Ignore zero pixels</span>
+          </div>
+          <div class="chk-row on" id="chk-norm" onclick="toggleChk(this)">
+            <div class="chk-box">✓</div>
+            <span class="chk-txt" style="font-size:11px;">Normalize features</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: 3D brain visualization -->
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center;">
+      <div class="brain-wrap" id="threejs-container" style="width:100%; max-width:560px; position:relative;">
+        <div class="brain-ring"></div>
+        <div class="brain-ring"></div>
+        <div class="brain-ring"></div>
+      </div>
+      <!-- Status under brain -->
+      <div style="margin-top:12px; font-family:'Space Mono',monospace; font-size:9px; letter-spacing:2px; color:var(--muted); text-align:center;">
+        <span id="fe-feat-count-center">FOF ACTIVE</span>
+      </div>
+    </div>
+
+    <!-- RIGHT: feature families -->
+    <div>
+      <div class="card" style="padding:18px;">
+        <div class="card-label">Feature Families</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+
+          <div class="feat-toggle on" data-feat="fof" onclick="toggleFeat(this)">
+            <div>
+              <div class="feat-name" style="font-size:11px;">FOF</div>
+              <div class="feat-desc" style="font-size:10px;">First-Order Features</div>
+            </div>
+            <div class="sw"></div>
+          </div>
+
+          <div class="feat-toggle" data-feat="glcm" onclick="toggleFeat(this)">
+            <div>
+              <div class="feat-name" style="font-size:11px;">GLCM</div>
+              <div class="feat-desc" style="font-size:10px;">Co-occurrence Matrix</div>
+            </div>
+            <div class="sw"></div>
+          </div>
+          <div id="glcm-params" style="display:none; padding:8px 12px; background:rgba(0,0,0,.3); border-radius:8px; border:1px solid var(--border); font-size:11px;" onclick="event.stopPropagation()">
+            <label class="lbl" style="font-size:8px;">Distances</label>
+            <div class="multi-tags" id="glcm-d" style="gap:4px;">
+              <span class="tag sel" data-val="1" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">1</span>
+              <span class="tag" data-val="2" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">2</span>
+              <span class="tag" data-val="3" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">3</span>
+              <span class="tag" data-val="4" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">4</span>
+            </div>
+            <label class="lbl" style="font-size:8px;margin-top:6px;">Angles (°)</label>
+            <div class="multi-tags" id="glcm-theta" style="gap:4px;">
+              <span class="tag sel" data-val="0" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">0°</span>
+              <span class="tag" data-val="45" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">45°</span>
+              <span class="tag" data-val="90" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">90°</span>
+              <span class="tag" data-val="135" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">135°</span>
+            </div>
+            <div class="chk-row" id="chk-glcm-sym" onclick="toggleChk(this)" style="margin-top:6px;">
+              <div class="chk-box" style="width:14px;height:14px;font-size:9px;">✓</div>
+              <span class="chk-txt" style="font-size:10px;">Symmetric</span>
+            </div>
+          </div>
+
+          <div class="feat-toggle" data-feat="glrlm" onclick="toggleFeat(this)">
+            <div>
+              <div class="feat-name" style="font-size:11px;">GLRLM</div>
+              <div class="feat-desc" style="font-size:10px;">Run Length Matrix</div>
+            </div>
+            <div class="sw"></div>
+          </div>
+          <div id="glrlm-params" style="display:none; padding:8px 12px; background:rgba(0,0,0,.3); border-radius:8px; border:1px solid var(--border);" onclick="event.stopPropagation()">
+            <label class="lbl" style="font-size:8px;">Angles (°)</label>
+            <div class="multi-tags" id="glrlm-theta" style="gap:4px;">
+              <span class="tag sel" data-val="0" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">0°</span>
+              <span class="tag" data-val="45" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">45°</span>
+              <span class="tag" data-val="90" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">90°</span>
+              <span class="tag" data-val="135" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">135°</span>
+            </div>
+          </div>
+
+          <div class="feat-toggle" data-feat="glszm" onclick="toggleFeat(this)">
+            <div>
+              <div class="feat-name" style="font-size:11px;">GLSZM</div>
+              <div class="feat-desc" style="font-size:10px;">Size Zone Matrix</div>
+            </div>
+            <div class="sw"></div>
+          </div>
+          <div id="glszm-params" style="display:none; padding:8px 12px; background:rgba(0,0,0,.3); border-radius:8px; border:1px solid var(--border);" onclick="event.stopPropagation()">
+            <label class="lbl" style="font-size:8px;">Connectivity</label>
+            <div class="multi-tags" id="glszm-conn" style="gap:4px;">
+              <span class="tag sel" data-val="4" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">4</span>
+              <span class="tag" data-val="8" onclick="toggleTag(this)" style="font-size:9px;padding:3px 8px;">8</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="fe-alert" style="display:none;"></div>
+
+  <div id="fe-prog-wrap" style="display:none;">
+    <!-- 3D Neuron progress bar -->
+    <div class="prog-wrap">
+      <div class="prog-top">
+        <span id="fe-prog-txt" style="letter-spacing:1px;">INITIALIZING…</span>
+        <span id="fe-prog-pct" style="font-family:'Space Mono',monospace;font-size:12px;color:var(--blue);">0%</span>
+      </div>
+      <!-- Three.js axon neuron visualization replaces the flat bar -->
+      <div id="fe-neuron-prog-canvas" class="neuron-prog-canvas"></div>
+      <!-- Hidden bar still used for feSetProgress width tracking -->
+      <div id="fe-prog-bar" style="display:none;"></div>
+    </div>
+
+    <!-- Step indicators -->
+    <div style="display:flex; gap:8px; margin:12px 0; flex-wrap:wrap;" id="fe-steps">
+      <div class="fe-step" id="step-scan"   data-label="SCANNING FOLDERS">
+        <div class="step-dot"></div><span>SCANNING</span>
+      </div>
+      <div class="fe-step" id="step-fof"    data-label="FOF FEATURES">
+        <div class="step-dot"></div><span>FOF</span>
+      </div>
+      <div class="fe-step" id="step-glcm"   data-label="GLCM MATRIX">
+        <div class="step-dot"></div><span>GLCM</span>
+      </div>
+      <div class="fe-step" id="step-glrlm"  data-label="GLRLM MATRIX">
+        <div class="step-dot"></div><span>GLRLM</span>
+      </div>
+      <div class="fe-step" id="step-glszm"  data-label="GLSZM MATRIX">
+        <div class="step-dot"></div><span>GLSZM</span>
+      </div>
+      <div class="fe-step" id="step-export" data-label="BUILDING CSV">
+        <div class="step-dot"></div><span>EXPORT</span>
+      </div>
+    </div>
+
+    <!-- Live stats ticker -->
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:4px;" id="fe-live-stats">
+      <div class="fe-stat"><div id="ls-class" class="ls-val">—</div><div class="ls-lbl">CURRENT CLASS</div></div>
+      <div class="fe-stat"><div id="ls-done"  class="ls-val">0</div><div class="ls-lbl">PROCESSED</div></div>
+      <div class="fe-stat"><div id="ls-skip"  class="ls-val">0</div><div class="ls-lbl">SKIPPED</div></div>
+      <div class="fe-stat"><div id="ls-total" class="ls-val">—</div><div class="ls-lbl">TOTAL</div></div>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:10px;">
+    <button class="run-btn" id="btn-fe" onclick="runFE()" style="flex:3;">▶ EXECUTE FEATURE EXTRACTION</button>
+    <button class="run-btn" id="btn-debug" onclick="runDebug()" style="flex:1; background:linear-gradient(135deg,#ff8906,#ff2d78); font-size:10px;">🔍 DIAGNOSE FOLDER</button>
+  </div>
+  <div id="debug-results" style="display:none; margin-top:16px;"></div>
+
+  <div id="fe-results" style="display:none; margin-top:24px;">
+    <div class="card">
+      <div class="card-label">Extraction Summary</div>
+      <div class="g3" id="fe-metrics" style="margin-bottom:14px;"></div>
+      <div id="fe-table-wrap" style="overflow-x:auto;"></div>
+      <div id="fe-dl-wrap" style="margin-top:14px;"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     TAB 2 — ML CLASSIFICATION
+═══════════════════════════════════════════════════ -->
+<canvas id="brainML"></canvas>
+<div id="tab-ml" class="tab-panel z1">
+
+  <div class="sec-hdr">
+    <div class="sec-dot"></div>
+    <h2>ML CLASSIFICATION ENGINE</h2>
+  </div>
+
+  <div class="g2" style="align-items:start;">
+    <!-- LEFT: data -->
+    <div class="card">
+      <div class="card-label">Data</div>
+      <div style="margin-bottom:12px;">
+        <label class="lbl">Training CSV</label>
+        <input id="ml-train-file" type="file" accept=".csv" class="inp" style="padding:8px;">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="lbl">Test CSV (optional)</label>
+        <input id="ml-test-file" type="file" accept=".csv" class="inp" style="padding:8px;">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="lbl">Target Column Name</label>
+        <input id="ml-target" class="inp" type="text" value="Class">
+      </div>
+      <div class="chk-row on" id="chk-drop-first" onclick="toggleChk(this)">
+        <div class="chk-box">✓</div>
+        <span class="chk-txt">Drop first column (index/ID)</span>
+      </div>
+      <div style="margin-top:14px;">
+        <div class="slider-hdr">
+          <span class="slider-lbl">VALIDATION SPLIT</span>
+          <span class="slider-val" id="val-split-val">20%</span>
+        </div>
+        <input type="range" min="10" max="40" step="5" value="20"
+               oninput="document.getElementById('val-split-val').textContent=this.value+'%'; mlValSplit=this.value/100">
+      </div>
+    </div>
+
+    <!-- RIGHT: model config -->
+    <div class="card">
+      <div class="card-label">Model Configuration</div>
+      <div style="margin-bottom:12px;">
+        <label class="lbl">Classifier</label>
+        <select id="ml-model" class="inp" onchange="updateMLViz()">
+          <option value="MLP">MLP — Multi-Layer Perceptron</option>
+          <option value="RF">RF — Random Forest</option>
+          <option value="AB">AB — AdaBoost</option>
+          <option value="KNN">KNN — K-Nearest Neighbors</option>
+          <option value="DT">DT — Decision Tree</option>
+          <option value="ETs">ETs — Extra Trees</option>
+          <option value="SGD">SGD</option>
+          <option value="SVC">SVC — Support Vector</option>
+          <option value="GNB">GNB — Gaussian Naive Bayes</option>
+          <option value="LR">LR — Logistic Regression</option>
+          <option value="GB">GB — Gradient Boosting</option>
+        </select>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="lbl">Scaler</label>
+        <select id="ml-scaler" class="inp">
+          <option value="">None (no scaling)</option>
+          <option value="Standard" selected>StandardScaler</option>
+          <option value="MinMax">MinMaxScaler</option>
+          <option value="Robust">RobustScaler</option>
+          <option value="Normalizer">Normalizer</option>
+          <option value="MaxAbs">MaxAbsScaler</option>
+          <option value="QT">QuantileTransformer</option>
+        </select>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="lbl">Feature Selection</label>
+        <select id="ml-fs" class="inp" onchange="toggleFSRatio()">
+          <option value="">None (use all features)</option>
+          <option value="PCA">PCA</option>
+          <option value="RF">RF — Feature Importance</option>
+          <option value="RFE">RFE — Recursive Elimination</option>
+          <option value="LDA">LDA</option>
+          <option value="MI">MI — Mutual Information</option>
+        </select>
+      </div>
+      <div id="fs-ratio-wrap" style="display:none; margin-top:8px;">
+        <div class="slider-hdr">
+          <span class="slider-lbl">FEATURE RATIO</span>
+          <span class="slider-val" id="fs-ratio-val">80%</span>
+        </div>
+        <input type="range" min="10" max="100" step="10" value="80"
+               oninput="document.getElementById('fs-ratio-val').textContent=this.value+'%'; mlFsRatio=this.value">
+      </div>
+    </div>
+  </div>
+
+  <!-- brainML moved to fixed background -->
+
+  <div id="ml-alert" style="display:none;"></div>
+
+  <button class="run-btn" id="btn-ml" onclick="runML()">▶ TRAIN &amp; EVALUATE</button>
+
+  <div id="ml-results" style="display:none; margin-top:24px;">
+    <div class="card">
+      <div class="card-label">Performance Metrics</div>
+      <div class="g4" id="ml-metrics" style="gap:10px;"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Trained Model</div>
+      <div id="ml-dl-wrap"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     TAB 3 — DEEP LEARNING
+═══════════════════════════════════════════════════ -->
+<div id="tab-dl" class="tab-panel z1">
+
+  <div class="sec-hdr">
+    <div class="sec-dot"></div>
+    <h2>DEEP LEARNING / CNN</h2>
+  </div>
+
+  <div style="display:grid; grid-template-columns:310px 1fr; gap:18px; align-items:start; margin-bottom:18px;">
+    <!-- LEFT: all config stacked -->
+    <div>
+      <div class="card">
+        <div class="card-label">Environment &amp; Paths</div>
+        <div style="margin-bottom:12px;">
+          <label class="lbl">be645 Python Executable</label>
+          <input id="dl-python" class="inp path-input" type="text" placeholder="C:\...\envs\be645\python.exe">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="lbl">Dataset Directory</label>
+          <input id="dl-dataset" class="inp path-input" type="text" placeholder="/path/to/Dataset">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="lbl">Output Directory</label>
+          <input id="dl-output" class="inp path-input" type="text" value="./CNN_Output">
+        </div>
+        <div>
+          <label class="lbl">Helpers Directory</label>
+          <input id="dl-helpers" class="inp path-input" type="text" placeholder="/path/containing/HMB_Spring_2026_Helpers.py">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Architecture &amp; Training</div>
+        <div style="margin-bottom:12px;">
+          <label class="lbl">Pretrained Backbone</label>
+          <select id="dl-model" class="inp" onchange="updateNN()">
+            <option value="MobileNetV2">MobileNetV2</option>
+            <option value="ResNet50">ResNet50</option>
+            <option value="VGG16">VGG16</option>
+            <option value="EfficientNetB0">EfficientNetB0</option>
+            <option value="InceptionV3">InceptionV3</option>
+          </select>
+        </div>
+        <div class="g2" style="margin-bottom:12px; gap:10px;">
+          <div>
+            <label class="lbl">Image H (px)</label>
+            <input id="dl-imgh" class="inp" type="number" value="256" min="32" step="32">
+          </div>
+          <div>
+            <label class="lbl">Image W (px)</label>
+            <input id="dl-imgw" class="inp" type="number" value="256" min="32" step="32">
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="lbl">Batch Size</label>
+          <select id="dl-batch" class="inp">
+            <option>8</option><option>16</option><option value="32" selected>32</option>
+            <option>64</option><option>128</option>
+          </select>
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-hdr">
+            <span class="slider-lbl">MAX EPOCHS</span>
+            <span class="slider-val" id="epoch-val">50</span>
+          </div>
+          <input type="range" min="5" max="200" value="50" oninput="document.getElementById('epoch-val').textContent=this.value; dlEpochs=+this.value; updateNN()">
+        </div>
+        <div class="slider-row">
+          <div class="slider-hdr">
+            <span class="slider-lbl">LEARNING RATE</span>
+            <span class="slider-val" id="lr-val">0.0010</span>
+          </div>
+          <input type="range" min="1" max="100" value="10" oninput="document.getElementById('lr-val').textContent=(this.value/10000).toFixed(4); dlLR=this.value/10000; updateNN()">
+        </div>
+        <div class="slider-row">
+          <div class="slider-hdr">
+            <span class="slider-lbl">EARLY STOPPING PATIENCE</span>
+            <span class="slider-val" id="pat-val">10</span>
+          </div>
+          <input type="range" min="1" max="50" value="10" oninput="document.getElementById('pat-val').textContent=this.value; dlPatience=+this.value">
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: NN viz -->
+    <div>
+      <div class="card" style="padding:16px;">
+        <div class="card-label">Network Architecture Visualization</div>
+        <canvas id="nnCanvas"></canvas>
+        <div style="margin-top:10px; font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); text-align:center;" id="nn-arch-label">MobileNetV2 · 6 LAYERS</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dl-alert" style="display:none;"></div>
+
+  <div id="dl-prog-wrap" style="display:none;">
+    <div class="prog-wrap">
+      <div class="prog-top"><span id="dl-prog-txt">TRAINING…</span><span id="dl-prog-pct">0%</span></div>
+      <div class="prog-bg"><div class="prog-fill" id="dl-prog-bar" style="width:0%"></div></div>
+    </div>
+    <div class="log-box" id="dl-log">Waiting for training output…</div>
+  </div>
+
+  <button class="run-btn" id="btn-dl" onclick="runDL()">▶ BEGIN TRAINING (GPU via be645)</button>
+
+  <div id="dl-results" style="display:none; margin-top:24px;">
+    <div class="card">
+      <div class="card-label">Test Set Results</div>
+      <div class="g4" id="dl-metrics" style="gap:10px;"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     TAB 4 — PREDICT
+═══════════════════════════════════════════════════ -->
+<div id="tab-pred" class="tab-panel z1">
+
+  <div class="sec-hdr">
+    <div class="sec-dot"></div>
+    <h2>PREDICTION ENGINE</h2>
+  </div>
+
+  <!-- Model type selector -->
+  <div class="card" style="margin-bottom:18px;">
+    <div class="card-label">Model Type</div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <div class="feat-toggle on" id="pred-mode-ml" onclick="setPredMode('ml')" style="flex:1; min-width:200px;">
+        <div>
+          <div class="feat-name">ML MODEL</div>
+          <div class="feat-desc">.pkl — uses extracted FOF features</div>
+        </div>
+        <div class="sw"></div>
+      </div>
+      <div class="feat-toggle" id="pred-mode-cnn" onclick="setPredMode('cnn')" style="flex:1; min-width:200px;">
+        <div>
+          <div class="feat-name">CNN MODEL</div>
+          <div class="feat-desc">.keras / .h5 — direct image inference</div>
+        </div>
+        <div class="sw"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2" style="align-items:start;">
+
+    <!-- LEFT: model load + image upload -->
+    <div>
+      <!-- ML mode -->
+      <div id="pred-ml-wrap">
+        <div class="card">
+          <div class="card-label">Load ML Model</div>
+          <div class="chk-row on" id="chk-use-session-ml" onclick="toggleChk(this)">
+            <div class="chk-box">✓</div>
+            <span class="chk-txt">Use model trained in this session (Tab 2)</span>
+          </div>
+          <div id="pred-pkl-upload" style="display:none; margin-top:10px;">
+            <label class="lbl">Upload .pkl model file</label>
+            <input id="pred-pkl" type="file" accept=".pkl,.p" class="inp" style="padding:8px;">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Upload Image</div>
+          <div style="margin-bottom:10px;">
+            <label class="lbl">Medical Image (grayscale)</label>
+            <input id="pred-img-ml" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;">
+          </div>
+          <div>
+            <label class="lbl">Mask (optional)</label>
+            <input id="pred-mask-ml" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;">
+          </div>
+        </div>
+
+        <button class="run-btn" onclick="runPredML()">▶ PREDICT (ML)</button>
+      </div>
+
+      <!-- CNN mode -->
+      <div id="pred-cnn-wrap" style="display:none;">
+        <div class="card">
+          <div class="card-label">Load CNN Model</div>
+          <div style="margin-bottom:10px;">
+            <label class="lbl">Load Mode</label>
+            <select id="cnn-load-mode" class="inp" onchange="updateCNNLoadMode()">
+              <option value="session">From session (trained in Tab 3)</option>
+              <option value="path">From file path on disk</option>
+              <option value="upload">Upload .keras / .h5 file</option>
+            </select>
+          </div>
+          <div id="cnn-path-wrap" style="display:none;">
+            <div style="margin-bottom:8px;">
+              <label class="lbl">Model Path (.keras)</label>
+              <input id="cnn-model-path" class="inp path-input" type="text" placeholder="/path/to/Model.keras">
+            </div>
+            <div>
+              <label class="lbl">Class Indices JSON Path</label>
+              <input id="cnn-ci-path" class="inp path-input" type="text" placeholder="/path/to/class_indices.json">
+            </div>
+          </div>
+          <div id="cnn-upload-wrap" style="display:none;">
+            <div style="margin-bottom:8px;">
+              <label class="lbl">Upload .keras / .h5 model</label>
+              <input id="pred-keras-file" type="file" accept=".keras,.h5" class="inp" style="padding:8px;">
+            </div>
+          </div>
+          <div id="cnn-labels-wrap" style="margin-top:8px;">
+            <label class="lbl">Class Labels (comma-separated)</label>
+            <input id="cnn-labels" class="inp" type="text" placeholder="benign, malignant, normal">
+          </div>
+          <div style="margin-top:8px;">
+            <label class="lbl">Model Input Size (px)</label>
+            <input id="cnn-input-size" class="inp" type="number" value="256" min="32" step="32">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Upload Image for CNN</div>
+          <input id="pred-img-cnn" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;">
+        </div>
+
+        <button class="run-btn" onclick="runPredCNN()">▶ PREDICT (CNN)</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: results + metrics -->
+    <div>
+      <div id="pred-alert" style="display:none; margin-bottom:14px;"></div>
+
+      <div id="pred-results" style="display:none;">
+        <div class="card">
+          <div class="card-label">Prediction Result</div>
+          <div id="pred-label-banner" style="padding:20px; border-radius:10px; text-align:center; background:linear-gradient(135deg,var(--purple),var(--blue)); margin-bottom:16px;">
+            <div style="font-family:'Space Mono',monospace; font-size:2rem; color:white; font-weight:700;" id="pred-label-text">—</div>
+          </div>
+          <div id="pred-bars"></div>
+        </div>
+      </div>
+
+      <!-- Static metrics card -->
+      <div class="card">
+        <div class="card-label">Loaded Model — Performance Snapshot</div>
+        <div class="g2" style="gap:12px;" id="pred-metrics-panel">
+          <div class="metric"><div class="metric-val" style="color:var(--blue);">—</div><div class="metric-lbl">AUC-ROC</div></div>
+          <div class="metric"><div class="metric-val" style="color:var(--green);">—</div><div class="metric-lbl">ACCURACY</div></div>
+          <div class="metric"><div class="metric-val" style="color:var(--purple);">—</div><div class="metric-lbl">SENSITIVITY</div></div>
+          <div class="metric"><div class="metric-val" style="color:var(--pink);">—</div><div class="metric-lbl">SPECIFICITY</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     JAVASCRIPT — BRAIN CANVAS + NN CANVAS + API
+════════════════════════════════════════════ -->
+<script>
+// ══════════════════════════════════════════════
+//  CONFIG — point this at your Flask server
+// ══════════════════════════════════════════════
+// Auto-detect: if opened from Flask (same origin), use relative URLs.
+// If opened as a file:// directly, fall back to localhost:5000.
+const API = (location.protocol === 'file:' || !location.port)
+  ? 'http://localhost:5000'
+  : (location.origin);
+
+// ── State ──────────────────────────────────────
+const activeFeats = new Set(['fof']);
+let mlValSplit = 0.2, mlFsRatio = 80, dlEpochs = 50, dlLR = 0.001, dlPatience = 10;
+let sessionML = null;   // stored ml_objects (from Tab 2 → Tab 4)
+let sessionCNN = null;  // stored CNN model path
+
+// Per-cluster intensity (0-1) driven by sub-feature selections
+// Declared here early so Three.js animation loop can reference it immediately
+const clusterIntensity = { fof: 1.0, glcm: 0, glrlm: 0, glszm: 0 };
+
+// Cluster color map (used by toggleFeat particle burst)
+const clusterDefs = {
+  fof:   { color: '#00d4ff' },
+  glcm:  { color: '#7f5af0' },
+  glrlm: { color: '#2cb67d' },
+  glszm: { color: '#ff2d78' },
+};
+
+// NN canvas state (must be global so updateNN() and drawNN() can share)
+const modelArch = {
+  'MobileNetV2':    [3, 6, 10, 14, 10, 6, 2],
+  'ResNet50':       [3, 8, 16, 32, 32, 16, 8, 4, 2],
+  'VGG16':          [3, 6, 12, 24, 24, 12, 6, 4, 2],
+  'EfficientNetB0': [3, 8, 14, 20, 20, 14, 8, 4, 2],
+  'InceptionV3':    [3, 8, 16, 28, 28, 16, 8, 3, 2],
+};
+let nnLayers = modelArch['MobileNetV2'];
+let nnTime = 0, nnSigs = [];
+
+// ── NN Canvas Draw ─────────────────────────────
+function getNodePos(layers, W, H) {
+  const maxN = Math.max(...layers);
+  return layers.map((cnt, li) => {
+    const x = (W / (layers.length + 1)) * (li + 1);
+    const gap = Math.min(H / (maxN + 1), 36);
+    return Array.from({length: cnt}, (_, ni) => ({
+      x, y: H/2 + (ni - (cnt-1)/2) * gap
+    }));
+  });
+}
+
+let _nnW = 0, _nnH = 0;
+
+function _initNN() {
+  const nnC = document.getElementById('nnCanvas');
+  if (!nnC) return;
+  const rect = nnC.getBoundingClientRect();
+  const W = rect.width  || nnC.parentElement?.clientWidth  || 600;
+  const H = rect.height || nnC.parentElement?.clientHeight || 340;
+  if (W > 10) { _nnW = W; _nnH = H; nnC.width = W; nnC.height = H; }
+}
+
+// Init after layout settles
+setTimeout(_initNN, 100);
+setTimeout(_initNN, 400);
+if (window.ResizeObserver) {
+  new ResizeObserver(_initNN).observe(document.getElementById('nnCanvas')?.parentElement || document.body);
+}
+
+function drawNN() {
+  const nnC = document.getElementById('nnCanvas');
+  if (!nnC) { requestAnimationFrame(drawNN); return; }
+  const nnX = nnC.getContext('2d');
+
+  // Use cached dimensions; re-init if still zero
+  if (_nnW < 10) { _initNN(); requestAnimationFrame(drawNN); return; }
+  const W = _nnW, H = _nnH;
+  if (nnC.width !== W) { nnC.width = W; nnC.height = H; }
+
+  nnX.clearRect(0, 0, W, H);
+  nnTime += 0.016;
+
+  const pos = getNodePos(nnLayers, W, H);
+
+  // Edges
+  for (let li = 0; li < nnLayers.length - 1; li++) {
+    pos[li].forEach((from, fi) => {
+      pos[li+1].forEach((to, ti) => {
+        const ph = Math.sin(nnTime*1.4 + fi*.35 + ti*.25 + li*.7);
+        nnX.beginPath(); nnX.moveTo(from.x, from.y); nnX.lineTo(to.x, to.y);
+        const edgeHue = (li / nnLayers.length) * 240 + 140;
+        nnX.strokeStyle = `hsla(${edgeHue},80%,60%,${.04 + Math.max(0,ph)*.10})`;
+        nnX.lineWidth = .5; nnX.stroke();
+      });
+    });
+  }
+
+  // Signal particles
+  if (Math.random() < .07) {
+    const li = Math.floor(Math.random() * (nnLayers.length-1));
+    const fi = Math.floor(Math.random() * nnLayers[li]);
+    const ti = Math.floor(Math.random() * nnLayers[li+1]);
+    const from = pos[li][fi], to = pos[li+1] && pos[li+1][ti];
+    if (from && to) nnSigs.push({sx:from.x,sy:from.y,tx:to.x,ty:to.y,t:0,spd:.02+Math.random()*.02});
+  }
+  nnSigs = nnSigs.filter(p => p.t < 1);
+  nnSigs.forEach(p => {
+    p.t += p.spd;
+    const x = p.sx + (p.tx-p.sx)*p.t, y = p.sy + (p.ty-p.sy)*p.t;
+    const a = Math.sin(p.t * Math.PI);
+    nnX.beginPath(); nnX.arc(x, y, 1.8, 0, Math.PI*2);
+    nnX.fillStyle = `rgba(0,212,255,${a})`; nnX.fill();
+  });
+
+  // Nodes
+  pos.forEach((layer, li) => {
+    layer.forEach((n, ni) => {
+      const pulse = Math.sin(nnTime*1.4 + ni*.45 + li*.75);
+      const r = 5.5 + Math.max(0, pulse) * 2.5;
+      const hue = (li / nnLayers.length) * 240 + 140;
+      // Outer glow halo
+      nnX.beginPath(); nnX.arc(n.x, n.y, r*3.5, 0, Math.PI*2);
+      nnX.fillStyle = `hsla(${hue},90%,60%,.06)`; nnX.fill();
+      // Mid glow
+      nnX.beginPath(); nnX.arc(n.x, n.y, r*2, 0, Math.PI*2);
+      nnX.fillStyle = `hsla(${hue},80%,60%,.12)`; nnX.fill();
+      // Core
+      nnX.beginPath(); nnX.arc(n.x, n.y, r, 0, Math.PI*2);
+      const g = nnX.createRadialGradient(n.x,n.y,0,n.x,n.y,r);
+      g.addColorStop(0,'#fff'); g.addColorStop(.3,`hsl(${hue},95%,75%)`); g.addColorStop(1,`hsla(${hue},85%,55%,.6)`);
+      nnX.fillStyle = g; nnX.fill();
+    });
+    if (layer.length > 0) {
+      const lbls = ['INPUT', ...Array(nnLayers.length-2).fill('HIDDEN'), 'OUTPUT'];
+      nnX.fillStyle = 'rgba(100,100,140,.7)';
+      nnX.font = '8px Space Mono'; nnX.textAlign = 'center';
+      nnX.fillText(lbls[li] || '', layer[0].x, H - 5);
+    }
+  });
+
+  requestAnimationFrame(drawNN);
+}
+drawNN();
+
+// ══════════════════════════════════════════════
+//  3D NEURON PROGRESS BAR (FE TAB)
+// ══════════════════════════════════════════════
+let nScene, nCam, nRenderer, nSegments = [], nPulse, nParticles;
+let currentProgPct = 0;
+const SINE_AMP = 1.65;
+const SINE_FREQ = 0.36;
+
+function initNeuronProgress() {
+  if (nScene) return;
+  const container = document.getElementById('fe-neuron-prog-canvas');
+  if (!container) return;
+
+  const w = container.offsetWidth || container.parentElement?.offsetWidth || 800;
+  const h = 150;
+  container.style.height = h + 'px';
+
+  nScene = new THREE.Scene();
+  // Wider view to fit the horizontal neuron
+  nCam = new THREE.OrthographicCamera(-21.5, 21.5, 6.8, -6.8, 0.1, 100);
+  nCam.position.z = 10;
+
+  nRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  nRenderer.setSize(w, h);
+  nRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(nRenderer.domElement);
+
+  // ── Axon (thin central line) ──────────────────────────────────────────────
+  const axonMat = new THREE.LineBasicMaterial({
+    color: 0x00d4ff, transparent: true, opacity: 0.25
+  });
+  // Sine wave axon path
+  // using global sine settings
+  const axonSinePts = [];
+  for (let x = -17; x <= 17; x += 0.3) {
+    axonSinePts.push(new THREE.Vector3(x, Math.sin(x * SINE_FREQ) * SINE_AMP, 0));
+  }
+  nScene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(axonSinePts), axonMat));
+
+  // ── Curved dendrite tree at left (cell body) ─────────────────────────────
+  // ── Segment layout ────────────────────────────────────────────────────────
+  const NUM_SEGS    = 8;
+  const TOTAL_WIDTH = 34;
+  const SEG_SPACING = TOTAL_WIDTH / NUM_SEGS;
+  // PW must be known before branches so terminals touch the first/last cell edge
+  const PW_GLOBAL   = SEG_SPACING * 0.50;   // pills touch: half-width = half spacing
+
+  const branchOriginLx = -(TOTAL_WIDTH / 2) - PW_GLOBAL * 0.05;
+  const branchOriginLy = Math.sin(branchOriginLx * SINE_FREQ) * SINE_AMP;
+  const branchOriginRx =  (TOTAL_WIDTH / 2) + PW_GLOBAL * 0.05;
+  const branchOriginRy = Math.sin(branchOriginRx * SINE_FREQ) * SINE_AMP;
+  const branchOriginL = branchOriginLx;
+  const branchOriginR = branchOriginRx;
+
+  // ── Parametric dendrite terminals using the uploaded function ─────────────
+  function addCurvedBranches(scene, originX, dir, numBranches, mat, originY=0) {
+    const spread = 2.55;
+    const AValues = Array.from({ length: numBranches }, (_, i) => {
+      const fan = (i / (numBranches - 1) - 0.5) * spread;
+      return fan + (dir < 0 ? Math.PI : 0);
+    });
+
+    const rootGeo = new THREE.SphereGeometry(0.16, 10, 8);
+    const rootMat = new THREE.MeshBasicMaterial({
+      color: 0x00d4ff, transparent: true, opacity: 0.62,
+      blending: THREE.AdditiveBlending
+    });
+    const root = new THREE.Mesh(rootGeo, rootMat);
+    root.position.set(originX, originY, 0);
+    scene.add(root);
+
+    AValues.forEach((A, i) => {
+      const pts = [];
+      const edgeBias = Math.abs(i / Math.max(1, numBranches - 1) - 0.5) * 2;
+      const branchScale = 1.55 + edgeBias * 0.55;
+      const yScale = 0.80;
+
+      for (let s = 0; s <= 38; s++) {
+        const t = (s / 38) * 2.0;
+        const px = t * Math.cos(A + 0.1 * Math.sin(12 * t) + 0.15 * (t - 3.5));
+        const py = t * Math.sin(A + 0.76 * Math.sin(3 * t) + 0.15 * (t - 4.75));
+
+        const branchLift = (i - (numBranches - 1) / 2) * 0.22;
+        pts.push(new THREE.Vector3(
+          originX + px * branchScale,
+          originY + py * yScale + branchLift,
+          0
+        ));
+      }
+
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
+
+      const tip = pts[pts.length - 1];
+      const subCount = i === 0 || i === numBranches - 1 ? 1 : 2;
+      for (let k = 0; k < subCount; k++) {
+        const side = subCount === 1 ? 0 : (k === 0 ? -1 : 1);
+        const subPts = [];
+        const baseAngle = Math.atan2(tip.y - pts[pts.length - 4].y, tip.x - pts[pts.length - 4].x);
+        const subAngle = baseAngle + side * 0.42;
+        const subLen = 0.62 + 0.10 * i;
+        for (let q = 0; q <= 14; q++) {
+          const u = q / 14;
+          const bend = Math.sin(u * Math.PI) * 0.16 * (side || (dir < 0 ? -1 : 1));
+          subPts.push(new THREE.Vector3(
+            tip.x + Math.cos(subAngle) * subLen * u + bend * Math.cos(subAngle + Math.PI / 2),
+            tip.y + Math.sin(subAngle) * subLen * u + bend * Math.sin(subAngle + Math.PI / 2),
+            0
+          ));
+        }
+        const subMat = mat.clone();
+        subMat.opacity = mat.opacity * 0.55;
+        scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(subPts), subMat));
+      }
+    });
+  }
+
+  const dendMat = new THREE.LineBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.50 });
+  addCurvedBranches(nScene, branchOriginL, -1, 6, dendMat, branchOriginLy);
+
+  const termMat = new THREE.LineBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.42 });
+  addCurvedBranches(nScene, branchOriginR, 1, 6, termMat, branchOriginRy);
+
+  // ── Myelin sheath segments ─────────────────────────────────────────────────
+  nSegments = [];
+
+  for (let i = 0; i < NUM_SEGS; i++) {
+    const cx = -(TOTAL_WIDTH/2) + SEG_SPACING*0.5 + i * SEG_SPACING;
+    const cy = Math.sin(cx * SINE_FREQ) * SINE_AMP;
+    const tangentAngle = Math.atan2(
+      SINE_AMP * SINE_FREQ * Math.cos(cx * SINE_FREQ), 1
+    );
+
+    // Build myelin blob from 3 overlapping spheres (large center + 2 smaller ends)
+    const group = new THREE.Group();
+    group.position.x = cx;
+    group.position.y = cy;
+    group.rotation.z = tangentAngle;
+    // store for animation loop
+
+    // ── Horizontal pill / stadium shape (wide x, short y) ───────────────────
+    // Built from: center cylinder body + 2 hemisphere end caps
+    // Scale fills ~95% of SEG_SPACING so pills nearly touch
+
+    const PW = PW_GLOBAL;             // pills fill full spacing — zero gap
+    const PH = 1.1;                  // pill half-height (y axis)
+
+    // --- Outer shell: stretched ellipsoid ---
+    const shellMat = new THREE.MeshBasicMaterial({
+      color: 0x003a5c, transparent: true, opacity: 0.50,
+      blending: THREE.AdditiveBlending
+    });
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), shellMat.clone());
+    shell.scale.set(PW, PH, PH);
+    group.add(shell);
+
+    // --- Bright inner core (mid-layer glow) ---
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: 0x0099bb, transparent: true, opacity: 0.55,
+      blending: THREE.AdditiveBlending
+    });
+    const innerCore = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), innerMat.clone());
+    innerCore.scale.set(PW * 0.68, PH * 0.68, PH * 0.68);
+    group.add(innerCore);
+
+    // --- Bright hotspot (lightest center, like the 2D version) ---
+    const hotMat = new THREE.MeshBasicMaterial({
+      color: 0x55eeff, transparent: true, opacity: 0.45,
+      blending: THREE.AdditiveBlending
+    });
+    const hotspot = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), hotMat.clone());
+    hotspot.scale.set(PW * 0.38, PH * 0.38, PH * 0.38);
+    group.add(hotspot);
+
+    // --- Vertical cross-section rings (membrane folds visible through shell) ---
+    const foldMat = new THREE.LineBasicMaterial({
+      color: 0x00d4ff, transparent: true, opacity: 0.18,
+      blending: THREE.AdditiveBlending
+    });
+    // Rings at equal x-intervals along the pill
+    const numFolds = 5;
+    for (let f = 0; f < numFolds; f++) {
+      const xOff = (f / (numFolds - 1) - 0.5) * 2 * PW * 0.85;
+      const ratio = 1 - (xOff / (PW * 0.85)) * (xOff / (PW * 0.85));
+      const rr = Math.sqrt(Math.max(0, ratio)) * PH * 0.92;
+      const fpts = [];
+      for (let a = 0; a <= 20; a++) {
+        const t = (a / 20) * Math.PI * 2;
+        fpts.push(new THREE.Vector3(xOff, Math.cos(t) * rr, Math.sin(t) * rr));
+      }
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(fpts), foldMat.clone()));
+    }
+
+    // --- Horizontal center spine along x-axis ---
+    group.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-PW * 0.95, 0, 0), new THREE.Vector3(PW * 0.95, 0, 0)
+      ]),
+      new THREE.LineBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending })
+    ));
+
+    // --- Outer wireframe glow ---
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0x00d4ff, wireframe: true, transparent: true, opacity: 0.05,
+      blending: THREE.AdditiveBlending
+    });
+    const glowMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), glowMat);
+    glowMesh.scale.set(PW * 1.05, PH * 1.05, PH * 1.05);
+    group.add(glowMesh);
+
+    // --- Electric arcs running horizontally along surface ---
+    const arcPts = [];
+    for (let a = 0; a < 8; a++) {
+      const x1 = (a / 8) * 2 * PW * 0.9 - PW * 0.9;
+      const x2 = ((a + 0.5) / 8) * 2 * PW * 0.9 - PW * 0.9;
+      const r1 = Math.sqrt(Math.max(0, 1-(x1/(PW*0.9))*(x1/(PW*0.9)))) * PH;
+      const r2 = Math.sqrt(Math.max(0, 1-(x2/(PW*0.9))*(x2/(PW*0.9)))) * PH;
+      const ang = Math.random() * Math.PI * 2;
+      arcPts.push(new THREE.Vector3(x1, Math.cos(ang)*r1*0.9, Math.sin(ang)*r1*0.9));
+      arcPts.push(new THREE.Vector3(x2+(Math.random()-0.5)*0.1, Math.cos(ang+0.5)*r2*0.9+(Math.random()-0.5)*0.1, Math.sin(ang+0.5)*r2*0.9));
+    }
+    const arcMat = new THREE.LineBasicMaterial({
+      color: 0x00d4ff, transparent: true, opacity: 0.0,
+      blending: THREE.AdditiveBlending
+    });
+    const arcLines = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(arcPts), arcMat
+    );
+    group.add(arcLines);
+    const coreColor = new THREE.Color(0x003a5c);
+
+    // Contact glow where cells touch
+    if (i < NUM_SEGS - 1) {
+      const gapX = cx + SEG_SPACING * 0.5;
+      const gapY = Math.sin(gapX * SINE_FREQ) * SINE_AMP;
+      const flareMat = new THREE.MeshBasicMaterial({
+        color: 0x88eeff, transparent: true, opacity: 0.55,
+        blending: THREE.AdditiveBlending
+      });
+      const flare = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), flareMat);
+      flare.position.set(gapX, gapY, 0);
+      nScene.add(flare);
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: 0x00d4ff, transparent: true, opacity: 0.18,
+        blending: THREE.AdditiveBlending
+      });
+      const halo = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), haloMat);
+      halo.position.set(gapX, gapY, 0);
+      nScene.add(halo);
+    }
+
+    nScene.add(group);
+    nSegments.push({
+      group,
+      coreMeshes: group.children.filter(c => c.isMesh && !c.material.wireframe),
+      hotspot,
+      glowMesh,
+      arcLines,
+      arcMat,
+      baseX:       cx,
+      targetColor: new THREE.Color(0x003355),
+      active:      false,
+      phase:       Math.random() * Math.PI * 2,
+      sineY:       cy,
+    });
+  }
+
+  // ── Action potential pulse (glowing sphere on axon) ───────────────────────
+  const pGeo = new THREE.SphereGeometry(0.28, 12, 12);
+  const pMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.95,
+    blending: THREE.AdditiveBlending
+  });
+  nPulse = new THREE.Mesh(pGeo, pMat);
+  nPulse.position.x = -17;
+  nPulse.position.y = Math.sin(nPulse.position.x * SINE_FREQ) * SINE_AMP;
+  nScene.add(nPulse);
+
+  // Pulse glow halo
+  const haloMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.6, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending })
+  );
+  nPulse.add(haloMesh);
+
+  // ── Background floating ion particles ─────────────────────────────────────
+  const partPos = [];
+  for (let i = 0; i < 60; i++) {
+    partPos.push((Math.random()-.5)*36, (Math.random()-.5)*7, (Math.random()-.5)*2);
+  }
+  const partGeo = new THREE.BufferGeometry();
+  partGeo.setAttribute('position', new THREE.Float32BufferAttribute(partPos, 3));
+  nParticles = new THREE.Points(partGeo,
+    new THREE.PointsMaterial({ color: 0x00d4ff, size: 0.08, transparent: true, opacity: 0.25 })
+  );
+  nScene.add(nParticles);
+
+  animateNeuronProgress();
+}
+
+function animateNeuronProgress() {
+  requestAnimationFrame(animateNeuronProgress);
+  if (!nScene || !nRenderer) return;
+
+  const time = Date.now() * 0.002;
+
+  // Pulse travels left→right based on currentProgPct
+  const targetX = -17 + (currentProgPct / 100) * 34;
+  nPulse.position.x += (targetX - nPulse.position.x) * 0.08;
+  nPulse.position.y = Math.sin(nPulse.position.x * SINE_FREQ) * SINE_AMP;
+  // Pulse brightness pulses
+  nPulse.material.opacity = 0.7 + Math.sin(time * 6) * 0.3;
+
+  nSegments.forEach((seg, i) => {
+    // Gentle breath ON TOP of the sine wave base position (don't overwrite it)
+    seg.group.position.y = seg.sineY + Math.sin(time * 0.8 + seg.phase) * 0.06;
+
+    // Lerp core color toward target
+    seg.coreMeshes.forEach(m => {
+      m.material.color.lerp(seg.targetColor, 0.06);
+    });
+
+    if (seg.active) {
+      // Electric arcs flicker when active
+      seg.arcMat.opacity = Math.max(0, 0.25 + Math.sin(time * 8 + i * 1.3) * 0.25);
+      // Glow expands slightly
+      seg.glowMesh.material.opacity = 0.10 + Math.sin(time * 3 + i) * 0.05;
+      // Hotspot pulses bright
+      if (seg.hotspot) seg.hotspot.material.opacity = 0.35 + Math.sin(time * 2.5 + seg.phase) * 0.20;
+      // Slight scale pulse
+      const s = 1 + Math.sin(time * 2 + seg.phase) * 0.04;
+      seg.group.scale.setScalar(s);
+    } else {
+      seg.arcMat.opacity += (0 - seg.arcMat.opacity) * 0.1;
+      seg.glowMesh.material.opacity += (0.04 - seg.glowMesh.material.opacity) * 0.1;
+      // Hotspot dims when inactive
+      if (seg.hotspot) seg.hotspot.material.opacity += (0.08 - seg.hotspot.material.opacity) * 0.08;
+      seg.group.scale.setScalar(1);
+    }
+  });
+
+  // Drift ion particles
+  const pos = nParticles.geometry.attributes.position.array;
+  for (let i = 0; i < pos.length; i += 3) {
+    pos[i] += 0.04;
+    if (pos[i] > 18) pos[i] = -18;
+    pos[i+1] += Math.sin(time + i * 0.5) * 0.008;
+  }
+  nParticles.geometry.attributes.position.needsUpdate = true;
+
+  nRenderer.render(nScene, nCam);
+}
+
+// Do NOT init on page load — progress wrap is hidden, clientWidth=0
+// initNeuronProgress() is called by feSetProgress when wrap becomes visible
+window.addEventListener('resize', () => {
+  const c = document.getElementById('fe-neuron-prog-canvas');
+  if (c && nRenderer) nRenderer.setSize(c.clientWidth, c.clientHeight || 150);
+});
+
+// ── API Health ─────────────────────────────────
+async function checkAPI() {
+  const dot = document.getElementById('apiDot');
+  const txt = document.getElementById('apiStatus');
+  try {
+    const r = await fetch(API + '/health', { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    dot.className = 'api-dot online';
+    txt.textContent = 'API ONLINE · ' + (d.version || 'v1');
+  } catch(e) {
+    dot.className = 'api-dot error';
+    txt.textContent = 'API OFFLINE';
+  }
+}
+checkAPI();
+
+//  THREE.JS VOLUMETRIC BRAIN
+// ══════════════════════════════════════════════
+const container = document.getElementById('threejs-container');
+if (container) {
+  // Set container height to match a good aspect ratio for center column
+  function _getW3(){ return container.parentElement ? container.parentElement.clientWidth : 560; }
+  function _setContainerH(){
+    const w = _getW3();
+    const h = Math.max(420, Math.round(w * 0.78));
+    container.style.height = h + 'px';
+    container.style.width  = '100%';
+  }
+  _setContainerH();
+  setTimeout(_setContainerH, 100);
+
+  const scene3 = new THREE.Scene();
+  const cam3 = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 1000);
+  cam3.position.z = 240; cam3.position.y = 30;
+
+  const renderer3 = new THREE.WebGLRenderer({ alpha:true, antialias:true });
+  renderer3.setSize(container.clientWidth, container.clientHeight);
+  renderer3.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer3.domElement.style.position = 'absolute';
+  renderer3.domElement.style.top = '0'; renderer3.domElement.style.left = '0';
+  container.appendChild(renderer3.domElement);
+
+  const controls3 = new THREE.OrbitControls(cam3, renderer3.domElement);
+  controls3.enableDamping = true; controls3.dampingFactor = 0.05;
+  controls3.enableZoom = false; controls3.autoRotate = true; controls3.autoRotateSpeed = 0.8;
+
+  // Glow texture
+  const glowCanvas = document.createElement('canvas');
+  glowCanvas.width = glowCanvas.height = 64;
+  const gc = glowCanvas.getContext('2d');
+  const gg = gc.createRadialGradient(32,32,0,32,32,32);
+  gg.addColorStop(0,'rgba(255,255,255,1)'); gg.addColorStop(0.2,'rgba(255,255,255,0.8)'); gg.addColorStop(1,'rgba(0,0,0,0)');
+  gc.fillStyle=gg; gc.fillRect(0,0,64,64);
+  const ptex = new THREE.CanvasTexture(glowCanvas);
+
+  const colorMap3 = {
+    fof:   new THREE.Color(0x00d4ff),
+    glcm:  new THREE.Color(0x7f5af0),
+    glrlm: new THREE.Color(0x2cb67d),
+    glszm: new THREE.Color(0xff2d78),
+    inactive: new THREE.Color(0x0d0d28),
+  };
+
+  // Generate volumetric brain particles
+  const NUM = 4500;
+  const pos3 = [], clus3 = [];
+  let found = 0;
+  while (found < NUM) {
+    let x=(Math.random()-.5)*160, y=(Math.random()-.5)*140, z=(Math.random()-.5)*200;
+    let nx=x/60, ny=y/50, nz=z/80;
+    let d = nx*nx+ny*ny+nz*nz;
+    d += (Math.sin(x*.18)*Math.cos(y*.18)+Math.sin(z*.18))*.12 + Math.sin(x*.4+z*.4)*.03;
+    let inCerebrum = (d<1.0 && d>0.65 && y>-15);
+    if (Math.abs(x)<4 && y>-5) inCerebrum=false;
+    let cx2=Math.abs(x)-18, cy2=y+35, cz2=z+50;
+    let cd=(cx2*cx2/250)+(cy2*cy2/180)+(cz2*cz2/250);
+    let inCerebellum=(cd<1.0 && cd>0.4);
+    let inStem=(x*x+(z+25)*(z+25)<120 && y<=-15 && y>-55);
+    if (inCerebrum||inCerebellum||inStem) {
+      let cl='inactive';
+      if (inCerebellum||inStem) cl='glrlm';
+      else if (z>15) cl='fof';
+      else if (y>10 && z<=15) cl='glcm';
+      else if (z<-15 && y>-10) cl='glrlm';
+      else cl='glszm';
+      pos3.push(x,y,z); clus3.push(cl); found++;
+    }
+  }
+
+  const posArr3 = new Float32Array(pos3);
+  const colArr3 = new Float32Array(NUM*3);
+  const szArr3  = new Float32Array(NUM);
+  const cIdx3   = new Int32Array(NUM);
+  const cNames  = ['fof','glcm','glrlm','glszm'];
+
+  for (let i=0;i<NUM;i++) {
+    cIdx3[i] = cNames.indexOf(clus3[i]);
+    const c = activeFeats.has(clus3[i]) ? colorMap3[clus3[i]] : colorMap3.inactive;
+    colArr3[i*3]=c.r; colArr3[i*3+1]=c.g; colArr3[i*3+2]=c.b;
+    szArr3[i] = activeFeats.has(clus3[i]) ? Math.random()*3+1.5 : Math.random()*1.5+0.5;
+  }
+
+  const geo3 = new THREE.BufferGeometry();
+  geo3.setAttribute('position', new THREE.BufferAttribute(posArr3,3));
+  geo3.setAttribute('color',    new THREE.BufferAttribute(colArr3,3));
+  geo3.setAttribute('size',     new THREE.BufferAttribute(szArr3,1));
+
+  const mat3 = new THREE.ShaderMaterial({
+    uniforms: { pointTexture:{ value:ptex } },
+    vertexShader:`
+      attribute float size; attribute vec3 color; varying vec3 vColor;
+      void main(){ vColor=color; vec4 mv=modelViewMatrix*vec4(position,1.0);
+        gl_PointSize=size*(220.0/-mv.z); gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`
+      uniform sampler2D pointTexture; varying vec3 vColor;
+      void main(){ gl_FragColor=vec4(vColor,1.0)*texture2D(pointTexture,gl_PointCoord); }`,
+    blending:THREE.AdditiveBlending, depthTest:false, transparent:true
+  });
+
+  const pts3 = new THREE.Points(geo3, mat3);
+  scene3.add(pts3);
+
+  // Neural pathways lines
+  const lineGeo3 = new THREE.BufferGeometry();
+  const lineMat3 = new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.12,blending:THREE.AdditiveBlending,vertexColors:true});
+  const lineSegs3 = new THREE.LineSegments(lineGeo3, lineMat3);
+  scene3.add(lineSegs3);
+
+  function updateBrain3() {
+    const cols=geo3.attributes.color.array, szs=geo3.attributes.size.array;
+    const linePos=[], lineCols=[];
+    const activePts={0:[],1:[],2:[],3:[]};
+
+    // ── Per-cluster intensity from clusterIntensity map ─────────────────────
+    // Each cluster has its own 0-1 intensity based on its own sub-features:
+    // FOF=binary, GLCM=distances×angles/16, GLRLM=angles/4, GLSZM=conn/2
+
+    // Overall dimming factor for inactive clusters (more active = more contrast)
+    const activeCount = activeFeats.size;
+    const globalRatio = activeCount / 4;
+
+    for (let i=0;i<NUM;i++) {
+      const ci=cIdx3[i]; if(ci<0) continue;
+      const cn=cNames[ci];
+      const cIntensity = clusterIntensity[cn] || 0;   // 0-1 for this cluster
+      const isOn = cIntensity > 0;
+
+      let tc;
+      if (isOn) {
+        // Each cluster's color brightness = its own sub-feature intensity
+        const base = colorMap3[cn];
+        tc = { r: base.r * cIntensity,
+               g: base.g * cIntensity,
+               b: base.b * cIntensity };
+      } else {
+        // Inactive: dims further as other features are selected (contrast effect)
+        const dimFactor = Math.max(0.04, 0.28 - globalRatio * 0.20);
+        tc = { r: colorMap3.inactive.r * dimFactor,
+               g: colorMap3.inactive.g * dimFactor,
+               b: colorMap3.inactive.b * dimFactor };
+      }
+
+      // Particle size scales per-cluster; GLSZM (pink) gets extra size boost
+      const glszmBoost = (cn === 'glszm' && isOn) ? 1.6 : 1.0;
+      const ts = isOn
+        ? (0.8 + Math.random() * 2.2) * (0.5 + cIntensity * 1.5) * glszmBoost
+        : (Math.random() * 0.7 + 0.25) * Math.max(0.25, 1 - globalRatio * 0.55);
+
+      // Smooth lerp toward target
+      cols[i*3]   += (tc.r - cols[i*3])   * .07;
+      cols[i*3+1] += (tc.g - cols[i*3+1]) * .07;
+      cols[i*3+2] += (tc.b - cols[i*3+2]) * .07;
+      szs[i]      += (ts   - szs[i])       * .07;
+
+      // Denser pathway spawning when cluster has more sub-features selected
+      const spawnThresh = isOn ? Math.max(0.85, 0.97 - cIntensity * 0.12) : 1.0;
+      if(isOn && Math.random() > spawnThresh)
+        activePts[ci].push(new THREE.Vector3(posArr3[i*3],posArr3[i*3+1],posArr3[i*3+2]));
+    }
+
+    // Neural pathway lines — connection distance & opacity scales per cluster
+    for (let c=0;c<4;c++) {
+      const pts=activePts[c], cn=cNames[c];
+      const cIntensity = clusterIntensity[cn] || 0;
+      if(cIntensity > 0){
+        const base = colorMap3[cn];
+        const col  = { r: base.r * cIntensity, g: base.g * cIntensity, b: base.b * cIntensity };
+        // More sub-features = longer connections; GLSZM gets wider reach
+        const connDist = (cn === 'glszm') ? 15 + cIntensity * 55 : 15 + cIntensity * 35;
+        for(let j=0;j<pts.length-1;j+=2){
+          if(pts[j].distanceTo(pts[j+1]) < connDist){
+            linePos.push(pts[j].x,pts[j].y,pts[j].z,pts[j+1].x,pts[j+1].y,pts[j+1].z);
+            lineCols.push(col.r,col.g,col.b,col.r,col.g,col.b);
+          }
+        }
+      }
+    }
+    lineGeo3.setAttribute('position',new THREE.Float32BufferAttribute(linePos,3));
+    lineGeo3.setAttribute('color',   new THREE.Float32BufferAttribute(lineCols,3));
+    geo3.attributes.color.needsUpdate=true; geo3.attributes.size.needsUpdate=true;
+  }
+
+  const clock3 = new THREE.Clock();
+  function animate3() {
+    requestAnimationFrame(animate3);
+    const t = clock3.getElapsedTime();
+    // Pulse and line opacity driven by AVERAGE of all active cluster intensities
+    const intensityValues = Object.values(clusterIntensity);
+    const avgIntensity = intensityValues.reduce((a,b)=>a+b,0) / 4;  // 0-1
+    const maxIntensity = Math.max(...intensityValues);               // 0-1
+
+    // Pulse amplitude = max intensity of any cluster
+    const pulseAmp = 0.006 + maxIntensity * 0.026;
+    const s = 1 + Math.sin(t * 1.5) * pulseAmp;
+    pts3.scale.set(s, s, s);
+    lineSegs3.scale.set(s, s, s);
+
+    // Line opacity scales with average intensity across all clusters
+    lineMat3.opacity = avgIntensity < 0.01 ? 0 : (0.04 + avgIntensity * 0.32);
+
+    controls3.update();
+    updateBrain3();
+    renderer3.render(scene3, cam3);
+  }
+  animate3();
+
+  window.addEventListener('resize',()=>{
+    if(!container) return;
+    _setContainerH();
+    cam3.aspect=container.clientWidth/container.clientHeight;
+    cam3.updateProjectionMatrix();
+    renderer3.setSize(container.clientWidth,container.clientHeight);
+  });
+}
+
+// ── ML Neural Activation Map ─────────────────────────────────────────────────
+const mlC = document.getElementById('brainML');
+const mlX = mlC.getContext('2d');
+const ML_COLORS = ['0,212,255','127,90,240','44,182,125','255,45,120','255,137,6'];
+let mlNodes = [], mlTime = 0, mlActive = false;
+let mlTrainProgress = 0; // 0-1, drives wave-front activation during training
+
+function _buildMLNodes(W, H) {
+  mlNodes = [];
+  // Spread nodes in a proper grid+scatter pattern across full width
+  const cols = 20, rows = 12;
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      const jx = (Math.random() - 0.5) * (W / cols) * 0.7;
+      const jy = (Math.random() - 0.5) * (H / rows) * 0.7;
+      mlNodes.push({
+        x:       (c + 0.5) / cols * W + jx,
+        y:       (r + 0.5) / rows * H + jy,
+        r:       1.8 + Math.random() * 3,
+        phase:   Math.random() * Math.PI * 2,
+        b:       0.04,
+        cluster: Math.floor(Math.random() * 5),
+        col:     c / cols,   // normalised x position (for wave-front)
+      });
+    }
+  }
+}
+
+function _resizeML() {
+  const W = window.innerWidth, H = window.innerHeight;
+  if (Math.abs(mlC.width - W) > 4) { mlC.width=W; mlC.height=H; _buildMLNodes(W,H); }
+}
+window.addEventListener('resize', _resizeML);
+setTimeout(_resizeML, 50);
+
+function drawMLBrain() {
+  const W = mlC.width || 800, H = mlC.height || 220;
+  mlX.clearRect(0, 0, W, H);
+  mlTime += 0.016;
+
+  if (mlNodes.length === 0) { requestAnimationFrame(drawMLBrain); return; }
+
+  // Ambient background glow when training
+  if (mlActive || mlTrainProgress > 0) {
+    const intensity = Math.max(mlActive ? 0.06 : 0, mlTrainProgress * 0.08);
+    const grd = mlX.createRadialGradient(W/2, H/2, 0, W/2, H/2, W * 0.65);
+    grd.addColorStop(0, `rgba(0,212,255,${intensity})`);
+    grd.addColorStop(0.5, `rgba(127,90,240,${intensity * 0.4})`);
+    grd.addColorStop(1, 'transparent');
+    mlX.fillStyle = grd; mlX.fillRect(0, 0, W, H);
+  }
+
+  // Wave-front: during training, nodes light up left→right as progress increases
+  const waveFront = mlTrainProgress; // 0 = no training, 1 = complete
+
+  mlNodes.forEach((n, i) => {
+    // Brightness target: active = full glow, training = wave sweep, idle = dim
+    let target;
+    if (mlTrainProgress > 0) {
+      // Wave front: nodes whose col position < waveFront light up
+      const inWave = n.col < waveFront;
+      target = inWave ? 0.85 : 0.06;
+    } else if (mlActive) {
+      target = 0.75;
+    } else {
+      target = 0.05;
+    }
+    n.b += (target - n.b) * 0.04; // smooth lerp
+
+    const pulse = Math.sin(mlTime * 1.8 + n.phase) * 0.15 + 0.85;
+    const a     = Math.min(0.95, n.b * pulse);
+    const col   = ML_COLORS[n.cluster % ML_COLORS.length];
+
+    // Edges to nearby nodes
+    mlNodes.slice(i + 1).forEach(m => {
+      const d = Math.hypot(n.x - m.x, n.y - m.y);
+      if (d < 120) {
+        const ea = a * (1 - d / 120) * 0.22;
+        mlX.beginPath(); mlX.moveTo(n.x, n.y); mlX.lineTo(m.x, m.y);
+        mlX.strokeStyle = `rgba(${col},${ea})`;
+        mlX.lineWidth = 0.7; mlX.stroke();
+      }
+    });
+
+    // Glow halo
+    mlX.beginPath(); mlX.arc(n.x, n.y, n.r * pulse * 3, 0, Math.PI * 2);
+    mlX.fillStyle = `rgba(${col},${a * 0.1})`; mlX.fill();
+
+    // Core dot
+    mlX.beginPath(); mlX.arc(n.x, n.y, n.r * pulse, 0, Math.PI * 2);
+    mlX.fillStyle = `rgba(${col},${a})`; mlX.fill();
+
+    // Bright centre highlight
+    if (a > 0.3) {
+      mlX.beginPath(); mlX.arc(n.x, n.y, n.r * 0.4, 0, Math.PI * 2);
+      mlX.fillStyle = `rgba(255,255,255,${a * 0.6})`; mlX.fill();
+    }
+  });
+
+  requestAnimationFrame(drawMLBrain);
+}
+drawMLBrain();
+
+// ══════════════════════════════════════════════
+//  UI HELPERS
+// ══════════════════════════════════════════════
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+  const mlBg = document.getElementById('brainML');
+  if (mlBg) mlBg.classList.toggle('ml-bg-active', id==='ml');
+  if(id==='ml') { mlActive=true; _resizeML(); }
+}
+
+function toggleExp(id){
+  document.getElementById(id).classList.toggle('open');
+}
+
+function toggleChk(el){
+  el.classList.toggle('on');
+  el.querySelector('.chk-box').textContent = el.classList.contains('on') ? '✓' : '';
+}
+
+function isChkOn(id){ return document.getElementById(id).classList.contains('on'); }
+
+function toggleTag(el){
+  el.classList.toggle('sel');
+  updateBrainIntensity();   // re-score every cluster
+}
+
+function getSelectedTags(containerId){
+  return [...document.querySelectorAll('#'+containerId+' .tag.sel')].map(t=>+t.dataset.val);
+}
+
+function toggleFeat(el){
+  // Explicit state flip — avoids classList.toggle getting out of sync
+  const isNowOn = !el.classList.contains('on');
+  el.classList.toggle('on', isNowOn);
+
+  const feat = el.dataset.feat;
+  if(isNowOn) activeFeats.add(feat);
+  else        activeFeats.delete(feat);
+
+  // Show/hide sub-feature params
+  const paramMap = {glcm:'glcm-params', glrlm:'glrlm-params', glszm:'glszm-params'};
+  if(paramMap[feat]){
+    document.getElementById(paramMap[feat]).style.display = isNowOn ? 'block' : 'none';
+  }
+
+  // Update status strip
+  const ftxt = activeFeats.size + ' FEATURE' + (activeFeats.size !== 1 ? 'S' : '') + ' ACTIVE';
+  document.getElementById('fe-feat-count').textContent = ftxt;
+  const centerEl = document.getElementById('fe-feat-count-center');
+  if(centerEl) centerEl.textContent = [...activeFeats].map(f=>f.toUpperCase()).join(' · ') || 'NO FEATURES';
+
+  // Update brain intensity and fire particle burst if turning on
+  updateBrainIntensity();
+
+  // (3D brain updates automatically via updateScene lerp each frame)
+}
+
+function toggleFSRatio(){
+  const v = document.getElementById('ml-fs').value;
+  document.getElementById('fs-ratio-wrap').style.display = v ? 'block' : 'none';
+}
+
+function updateMLViz(){ mlActive = true; }
+
+function updateNN(){
+  const sel = document.getElementById('dl-model').value;
+  nnLayers = modelArch[sel] || [3,6,10,10,6,2];
+  document.getElementById('nn-arch-label').textContent = sel + ' · ' + nnLayers.length + ' LAYERS · ' + nnLayers.reduce((a,b)=>a+b,0) + ' NEURONS';
+}
+
+function setAlert(elId, type, msg){
+  const el = document.getElementById(elId);
+  const icons = {info:'ℹ️', ok:'✅', err:'❌', warn:'⚠️'};
+  el.style.display = 'block';
+  el.innerHTML = `<div class="alert alert-${type}"><span class="alert-icon">${icons[type]||'ℹ️'}</span><span>${msg}</span></div>`;
+}
+function clearAlert(elId){ const e=document.getElementById(elId); e.style.display='none'; e.innerHTML=''; }
+
+function resetFEResult(){
+  document.getElementById('fe-results').style.display='none';
+  document.getElementById('fe-prog-wrap').style.display='none';
+  clearAlert('fe-alert');
+}
+
+function setPredMode(mode){
+  const ml = document.getElementById('pred-mode-ml');
+  const cnn = document.getElementById('pred-mode-cnn');
+  if(mode==='ml'){ ml.classList.add('on'); cnn.classList.remove('on'); }
+  else           { cnn.classList.add('on'); ml.classList.remove('on'); }
+  document.getElementById('pred-ml-wrap').style.display = mode==='ml'?'block':'none';
+  document.getElementById('pred-cnn-wrap').style.display = mode==='cnn'?'block':'none';
+}
+
+// session ML checkbox → show/hide pkl upload
+document.getElementById('chk-use-session-ml').addEventListener('click',()=>{
+  setTimeout(()=>{
+    const on = document.getElementById('chk-use-session-ml').classList.contains('on');
+    document.getElementById('pred-pkl-upload').style.display = on ? 'none' : 'block';
+  },10);
+});
+
+function updateCNNLoadMode(){
+  const mode = document.getElementById('cnn-load-mode').value;
+  document.getElementById('cnn-path-wrap').style.display   = mode==='path'?'block':'none';
+  document.getElementById('cnn-upload-wrap').style.display = mode==='upload'?'block':'none';
+  document.getElementById('cnn-labels-wrap').style.display = mode==='session'?'none':'block';
+}
+
+// ══════════════════════════════════════════════
+//  API CALLS
+// ══════════════════════════════════════════════
+
+// ── TAB 1: Feature Extraction ──────────────────
+// ── FE progress helpers ───────────────────────────────────────────────────────
+function feSetStep(id) {
+  document.querySelectorAll('.fe-step').forEach(s => {
+    s.classList.remove('active');
+    if (!s.classList.contains('done')) s.querySelector('.step-dot').style.background = '';
+  });
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+
+function feCompleteStep(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.remove('active'); el.classList.add('done'); }
+}
+
+function feSetProgress(pct, txt) {
+  // Update text elements
+  const pctEl = document.getElementById('fe-prog-pct');
+  const txtEl = document.getElementById('fe-prog-txt');
+  if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+  if (txtEl) txtEl.textContent = txt;
+
+  // Drive the 3D neuron bar
+  currentProgPct = pct;
+
+  // Init neuron renderer if not yet started
+  if (!nScene) initNeuronProgress();
+
+  // Light up neuron segments proportional to progress
+  if (nSegments && nSegments.length > 0) {
+    const activeThreshold = (pct / 100) * nSegments.length;
+    nSegments.forEach((seg, i) => {
+      if (i < activeThreshold) {
+        seg.active = true;
+        seg.targetColor.setHex(0x00d4ff);
+      } else {
+        seg.active = false;
+        seg.targetColor.setHex(0x004466);
+      }
+    });
+  }
+}
+
+function feSetIndeterminate(txt) {
+  const pctEl = document.getElementById('fe-prog-pct');
+  const txtEl = document.getElementById('fe-prog-txt');
+  if (pctEl) pctEl.textContent = 'LIVE';
+  if (txtEl) txtEl.textContent = txt;
+
+  if (!nScene) setTimeout(initNeuronProgress, 50);
+
+  // Pulse all segments that correspond to completed steps
+  if (nSegments && nSegments.length > 0) {
+    const doneCount = document.querySelectorAll('.fe-step.done').length;
+    const activeIdx = Math.min(doneCount, nSegments.length - 1);
+    currentProgPct = (activeIdx / nSegments.length) * 100 + 15;
+    nSegments.forEach((seg, i) => {
+      if (i <= activeIdx) {
+        seg.active = true;
+        seg.targetColor.setHex(0x00d4ff);
+      } else {
+        seg.active = false;
+        seg.targetColor.setHex(0x004466);
+      }
+    });
+  }
+}
+
+function feResetSteps() {
+  document.querySelectorAll('.fe-step').forEach(s => {
+    s.classList.remove('active','done');
+    s.querySelector('.step-dot').style.background = '';
+  });
+}
+
+function feUpdateLive(cls, done, skip, total) {
+  const clsEl = document.getElementById('ls-class');
+  if (cls  !== undefined && clsEl) clsEl.textContent = cls || '—';
+  const doneEl = document.getElementById('ls-done');
+  if (done !== undefined && doneEl) doneEl.textContent = done;
+  const skipEl = document.getElementById('ls-skip');
+  if (skip !== undefined && skipEl) skipEl.textContent = skip;
+  const totEl = document.getElementById('ls-total');
+  if (total !== undefined && totEl) totEl.textContent = total;
+}
+
+// ── runFE ──────────────────────────────────────────────────────────────────────
+async function runFE(){
+  clearAlert('fe-alert');
+  const dir = document.getElementById('fe-dataset').value.trim();
+  if(!dir){ setAlert('fe-alert','err','Please enter a valid dataset folder path.'); return; }
+  if(activeFeats.size===0){ setAlert('fe-alert','err','Please select at least one feature family.'); return; }
+
+  const btn = document.getElementById('btn-fe');
+  btn.disabled = true; btn.textContent = '⏳ PROCESSING…';
+
+  const doFOF   = activeFeats.has('fof');
+  const doGLCM  = activeFeats.has('glcm');
+  const doGLRLM = activeFeats.has('glrlm');
+  const doGLSZM = activeFeats.has('glszm');
+
+  const payload = {
+    dataset_dir:  dir,
+    output_csv:   document.getElementById('fe-csv').value || 'extracted_features.csv',
+    target_size:  +document.getElementById('fe-size').value,
+    ignore_zeros: isChkOn('chk-ignzero'),
+    normalize:    isChkOn('chk-norm'),
+    do_fof:   doFOF,
+    do_glcm:  doGLCM,
+    do_glrlm: doGLRLM,
+    do_glszm: doGLSZM,
+    glcm_d:      getSelectedTags('glcm-d'),
+    glcm_theta:  getSelectedTags('glcm-theta'),
+    glcm_sym:    isChkOn('chk-glcm-sym'),
+    glrlm_theta: getSelectedTags('glrlm-theta'),
+    glszm_conn:  getSelectedTags('glszm-conn'),
+  };
+
+  // Show progress UI and init neuron bar now that container is visible
+  document.getElementById('fe-prog-wrap').style.display = 'block';
+  feResetSteps();
+  feUpdateLive('—', 0, 0, '—');
+  // Init neuron bar now — container has real dimensions
+  if (!nScene) {
+    setTimeout(initNeuronProgress, 30);
+  }
+
+  // Hide inactive feature steps
+  document.getElementById('step-fof').style.display   = doFOF   ? '' : 'none';
+  document.getElementById('step-glcm').style.display  = doGLCM  ? '' : 'none';
+  document.getElementById('step-glrlm').style.display = doGLRLM ? '' : 'none';
+  document.getElementById('step-glszm').style.display = doGLSZM ? '' : 'none';
+
+  // ── Phase 1: scanning (0-5%) ─────────────────────────────────────────────
+  feSetStep('step-scan');
+  feSetProgress(2, 'SCANNING DATASET FOLDERS…');
+  await new Promise(r => setTimeout(r, 300));
+
+  setAlert('fe-alert','info','Extracting features… this may take several minutes for large datasets.');
+
+  try {
+    // ── Phase 2: send request, simulate step progression while waiting ────────
+    // We animate the steps while the fetch is running in the background
+    let _respData = null;
+    let _fetchDone = false;
+    let _fetchErr  = null;
+
+    fetch(API + '/extract_features', {
+      method: 'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    }).then(async r => {
+      const d = await r.json();
+      _respData = r.ok ? d : { error: d.error || 'Server error ' + r.status };
+      _fetchDone = true;
+    }).catch(e => {
+      _fetchErr = e.message;
+      _fetchDone = true;
+    });
+
+    // Safety timeout — if fetch never resolves after 10 min, bail
+    setTimeout(() => { if (!_fetchDone) { _fetchErr = 'Request timed out'; _fetchDone = true; } }, 600000);
+
+    // ── Cycle through steps while fetch runs — neuron lights up segment by segment
+    feCompleteStep('step-scan');
+
+    const steps = [
+      { id:'step-fof',   active:doFOF,   label:'EXTRACTING FOF FEATURES'   },
+      { id:'step-glcm',  active:doGLCM,  label:'COMPUTING GLCM MATRICES'   },
+      { id:'step-glrlm', active:doGLRLM, label:'COMPUTING GLRLM MATRICES'  },
+      { id:'step-glszm', active:doGLSZM, label:'COMPUTING GLSZM MATRICES'  },
+    ].filter(s => s.active);
+
+    let stageIndex = 0, dots = 0;
+    while (!_fetchDone) {
+      const step = steps[Math.min(stageIndex, steps.length - 1)];
+      if (step) {
+        feSetStep(step.id);
+        feSetIndeterminate(step.label + '.'.repeat((dots % 3) + 1));
+      } else {
+        feSetStep('step-export');
+        feSetIndeterminate('BUILDING FEATURE TABLE' + '.'.repeat((dots % 3) + 1));
+      }
+      dots++;
+      // Advance to next step every ~3.5 seconds
+      if (dots % 10 === 0 && stageIndex < steps.length) {
+        feCompleteStep(steps[stageIndex].id);
+        stageIndex++;
+      }
+      await new Promise(r => setTimeout(r, 350));
+    }
+
+    if (_fetchErr) throw new Error(_fetchErr);
+
+    const data = _respData;
+    if (data.error) { setAlert('fe-alert','err', data.error); return; }
+
+    // ── Complete all steps + fully light neuron ───────────────────────────────
+    steps.forEach(s => feCompleteStep(s.id));
+    feSetStep('step-export');
+    feCompleteStep('step-export');
+    feSetProgress(100, '✓ EXTRACTION COMPLETE');
+    feUpdateLive(
+      data.classes ? data.classes.join(' · ') : '—',
+      data.processed  || 0,
+      data.skipped    || 0,
+      data.total_rows || 0
+    );
+
+    clearAlert('fe-alert');
+    setAlert('fe-alert','ok',
+      `✓ Extracted ${data.total_rows} rows · ${data.total_features} features · ${data.classes?.length||0} classes`
+    );
+
+    // Metrics
+    const mc = document.getElementById('fe-metrics');
+    mc.innerHTML = `
+      <div class="metric"><div class="metric-val" style="color:var(--green)">${data.processed||0}</div><div class="metric-lbl">PROCESSED</div></div>
+      <div class="metric"><div class="metric-val" style="color:var(--orange)">${data.skipped||0}</div><div class="metric-lbl">SKIPPED</div></div>
+      <div class="metric"><div class="metric-val" style="color:var(--blue)">${data.classes?.length||0}</div><div class="metric-lbl">CLASSES</div></div>
+    `;
+
+    // Table preview
+    if(data.preview && data.preview.length){
+      const cols = Object.keys(data.preview[0]);
+      const th   = cols.slice(0,8).map(c=>`<th>${c}</th>`).join('');
+      const rows = data.preview.slice(0,5).map(r=>`<tr>${cols.slice(0,8).map(c=>`<td>${typeof r[c]==='number'?r[c].toFixed(4):r[c]}</td>`).join('')}</tr>`).join('');
+      document.getElementById('fe-table-wrap').innerHTML =
+        `<div class="card-label">FEATURE TABLE PREVIEW (first 5 rows / 8 cols)</div>
+         <div style="overflow-x:auto"><table class="feat-table">
+           <thead><tr>${th}</tr></thead><tbody>${rows}</tbody>
+         </table></div>`;
+    }
+
+    // Download CSV
+    if(data.csv_b64){
+      const a = document.createElement('a');
+      a.href = 'data:text/csv;base64,' + data.csv_b64;
+      a.download = payload.output_csv;
+      a.className = 'dl-btn';
+      a.innerHTML = '⬇ DOWNLOAD FEATURES CSV';
+      document.getElementById('fe-dl-wrap').innerHTML = '';
+      document.getElementById('fe-dl-wrap').appendChild(a);
+    }
+
+    document.getElementById('fe-results').style.display = 'block';
+    window._lastCsvB64  = data.csv_b64;
+    window._lastCsvName = payload.output_csv;
+
+  } catch(e) {
+    console.error('[FE] Error:', e);
+    feSetProgress(0, 'ERROR');
+    setAlert('fe-alert','err', e.message + ' — Is Flask running at ' + API + '?');
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ EXECUTE FEATURE EXTRACTION';
+  }
+}
+
+// ── TAB 2: ML Classification ───────────────────
+async function runML(){
+  clearAlert('ml-alert');
+  const trainFile = document.getElementById('ml-train-file').files[0];
+  if(!trainFile){ setAlert('ml-alert','err','Please upload a Training CSV.'); return; }
+
+  const btn = document.getElementById('btn-ml');
+  btn.disabled=true; btn.textContent='⏳ TRAINING…';
+  mlActive=true;
+  mlTrainProgress=0;
+  setAlert('ml-alert','info','Training model… this may take a moment.');
+
+  // Animate wave front left→right during training (fake timed progress)
+  let _mlWaveInterval = setInterval(()=>{
+    if(mlTrainProgress < 0.95) mlTrainProgress += 0.012;
+  }, 80);
+
+  const fd = new FormData();
+  fd.append('train_csv', trainFile);
+  const testFile = document.getElementById('ml-test-file').files[0];
+  if(testFile) fd.append('test_csv', testFile);
+  fd.append('target_column',  document.getElementById('ml-target').value || 'Class');
+  fd.append('drop_first',     isChkOn('chk-drop-first') ? 'true' : 'false');
+  fd.append('test_ratio',     mlValSplit);
+  fd.append('model',          document.getElementById('ml-model').value);
+  fd.append('scaler',         document.getElementById('ml-scaler').value);
+  fd.append('feature_selection', document.getElementById('ml-fs').value);
+  fd.append('fs_ratio',       mlFsRatio);
+
+  try {
+    const resp = await fetch(API + '/train_ml', { method:'POST', body:fd });
+    const data = await resp.json();
+    if(!resp.ok || data.error){ setAlert('ml-alert','err', data.error||'Training failed'); return; }
+
+    clearAlert('ml-alert');
+    setAlert('ml-alert','ok','Training complete! Model saved to session.');
+
+    // Store objects reference for Predict tab
+    sessionML = data.session_key;
+
+    // Metrics grid
+    const mc = document.getElementById('ml-metrics');
+    const metricColors = ['var(--blue)','var(--green)','var(--purple)','var(--pink)'];
+    const mKeys = ['Macro Accuracy','Macro Precision','Macro Recall','Macro F1'];
+    mc.innerHTML = mKeys.map((k,i)=>{
+      const v = data.metrics && data.metrics[k] != null ? (data.metrics[k]*100).toFixed(2)+'%' : '—';
+      return `<div class="metric"><div class="metric-val" style="color:${metricColors[i]}">${v}</div><div class="metric-lbl">${k}</div></div>`;
+    }).join('');
+
+    // Add extra metrics
+    ['Weighted F1','Micro Accuracy'].forEach((k,i)=>{
+      if(data.metrics && data.metrics[k] != null){
+        mc.innerHTML += `<div class="metric"><div class="metric-val" style="color:${metricColors[(i+2)%4]}">${(data.metrics[k]*100).toFixed(2)}%</div><div class="metric-lbl">${k}</div></div>`;
+      }
+    });
+
+    // Download pickle
+    if(data.pkl_b64){
+      const a = document.createElement('a');
+      a.href = 'data:application/octet-stream;base64,'+data.pkl_b64;
+      const model = document.getElementById('ml-model').value;
+      const scaler = document.getElementById('ml-scaler').value||'None';
+      const fs = document.getElementById('ml-fs').value||'None';
+      a.download = `${model}_${scaler}_${fs}.pkl`;
+      a.className = 'dl-btn';
+      a.innerHTML = '⬇ DOWNLOAD TRAINED MODEL (.pkl)';
+      document.getElementById('ml-dl-wrap').innerHTML = '';
+      document.getElementById('ml-dl-wrap').appendChild(a);
+    }
+
+    // Confusion matrix image
+    if(data.confusion_matrix_b64){
+      document.getElementById('ml-dl-wrap').innerHTML += `
+        <div style="margin-top:14px;">
+          <div class="card-label">CONFUSION MATRIX</div>
+          <img src="data:image/png;base64,${data.confusion_matrix_b64}" style="max-width:100%;border-radius:8px;border:1px solid var(--border);margin-top:8px;">
+        </div>`;
+    }
+
+    document.getElementById('ml-results').style.display='block';
+
+  } catch(e) {
+    setAlert('ml-alert','err','Network error: '+e.message);
+  } finally {
+    clearInterval(_mlWaveInterval);
+    mlTrainProgress = 1.0;   // fully lit on complete
+    setTimeout(()=>{ mlTrainProgress=0; mlActive=false; }, 4000); // fade out after 4s
+    btn.disabled=false; btn.textContent='▶ TRAIN & EVALUATE';
+  }
+}
+
+// ── TAB 3: Deep Learning ───────────────────────
+async function runDL(){
+  clearAlert('dl-alert');
+  const python = document.getElementById('dl-python').value.trim();
+  const dataset = document.getElementById('dl-dataset').value.trim();
+  const output  = document.getElementById('dl-output').value.trim();
+  const helpers = document.getElementById('dl-helpers').value.trim();
+
+  if(!python)  { setAlert('dl-alert','err','Please enter the be645 Python executable path.'); return; }
+  if(!dataset) { setAlert('dl-alert','err','Please enter the dataset directory path.'); return; }
+  if(!helpers) { setAlert('dl-alert','err','Please enter the helpers directory path.'); return; }
+
+  const btn = document.getElementById('btn-dl');
+  btn.disabled=true; btn.textContent='⏳ TRAINING…';
+
+  document.getElementById('dl-prog-wrap').style.display='block';
+  const logBox = document.getElementById('dl-log');
+  logBox.innerHTML = '<span class="log-info">→ Launching training subprocess…</span>\n';
+
+  const payload = {
+    be645_python:    python,
+    dataset_dir:     dataset,
+    output_dir:      output,
+    helpers_dir:     helpers,
+    base_model:      document.getElementById('dl-model').value,
+    img_h:           +document.getElementById('dl-imgh').value,
+    img_w:           +document.getElementById('dl-imgw').value,
+    batch_size:      +document.getElementById('dl-batch').value,
+    epochs:          dlEpochs,
+    patience:        dlPatience,
+    lr:              dlLR,
+  };
+
+  setAlert('dl-alert','info','Training CNN via be645 environment… streaming logs below.');
+
+  try {
+    // Use SSE streaming endpoint
+    const resp = await fetch(API + '/train_cnn', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+
+    // Stream response as text lines
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let lastEpoch = 0;
+
+    while(true){
+      const {done, value} = await reader.read();
+      if(done) break;
+      buf += decoder.decode(value, {stream:true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for(const line of lines){
+        if(!line.trim()) continue;
+        // Parse RESULTS_JSON
+        if(line.startsWith('RESULTS_JSON:')){
+          try{
+            const results = JSON.parse(line.replace('RESULTS_JSON:',''));
+            showDLResults(results);
+          }catch(e){}
+          continue;
+        }
+        // Epoch progress
+        if(line.startsWith('Epoch ')){
+          try{
+            lastEpoch = parseInt(line.split('/')[0].replace('Epoch ','').trim());
+            const pct = Math.min(Math.round(lastEpoch/dlEpochs*100),100);
+            document.getElementById('dl-prog-bar').style.width = pct+'%';
+            document.getElementById('dl-prog-pct').textContent = pct+'%';
+            document.getElementById('dl-prog-txt').textContent = 'EPOCH '+lastEpoch+' / '+dlEpochs;
+          }catch(e){}
+        }
+        // Colorize log
+        const cls = line.includes('Error')||line.includes('ERROR') ? 'log-err'
+                  : line.includes('✅')||line.includes('TRAINING_COMPLETE') ? 'log-ok'
+                  : line.startsWith('Epoch')||line.startsWith('→') ? 'log-info'
+                  : '';
+        logBox.innerHTML += `<span class="${cls}">${escHtml(line)}</span>\n`;
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+    }
+
+    document.getElementById('dl-prog-bar').style.width = '100%';
+    document.getElementById('dl-prog-pct').textContent = '100%';
+    document.getElementById('dl-prog-txt').textContent = 'COMPLETE';
+    clearAlert('dl-alert');
+    setAlert('dl-alert','ok','Training complete! Model saved to output directory.');
+    sessionCNN = { path: output+'/Model.keras', ci_path: output+'/class_indices.json' };
+
+  } catch(e) {
+    setAlert('dl-alert','err','Error: '+e.message);
+    logBox.innerHTML += `<span class="log-err">ERROR: ${escHtml(e.message)}</span>\n`;
+  } finally {
+    btn.disabled=false; btn.textContent='▶ BEGIN TRAINING (GPU via be645)';
+  }
+}
+
+function showDLResults(results){
+  const mc = document.getElementById('dl-metrics');
+  const colors = ['var(--blue)','var(--green)','var(--purple)','var(--pink)','var(--orange)'];
+  mc.innerHTML = Object.entries(results).map(([k,v],i)=>
+    `<div class="metric"><div class="metric-val" style="color:${colors[i%5]}">${(+v).toFixed(4)}</div><div class="metric-lbl">${k}</div></div>`
+  ).join('');
+  document.getElementById('dl-results').style.display='block';
+}
+
+// ── TAB 4: Predict (ML) ────────────────────────
+async function runPredML(){
+  clearAlert('pred-alert');
+  const imgFile = document.getElementById('pred-img-ml').files[0];
+  if(!imgFile){ setAlert('pred-alert','err','Please upload an image.'); return; }
+
+  const useSession = document.getElementById('chk-use-session-ml').classList.contains('on');
+  const fd = new FormData();
+  fd.append('image', imgFile);
+
+  const maskFile = document.getElementById('pred-mask-ml').files[0];
+  if(maskFile) fd.append('mask', maskFile);
+
+  if(useSession && sessionML){
+    fd.append('session_key', sessionML);
+  } else {
+    const pkl = document.getElementById('pred-pkl').files[0];
+    if(!pkl){ setAlert('pred-alert','err','Please upload a .pkl model file or train one in Tab 2.'); return; }
+    fd.append('model_pkl', pkl);
+  }
+
+  setAlert('pred-alert','info','Running inference…');
+
+  try {
+    const resp = await fetch(API + '/predict_ml', { method:'POST', body:fd });
+    const data = await resp.json();
+    if(!resp.ok || data.error){ setAlert('pred-alert','err', data.error||'Prediction error'); return; }
+
+    clearAlert('pred-alert');
+    showPredResults(data);
+  } catch(e) {
+    setAlert('pred-alert','err','Network error: '+e.message);
+  }
+}
+
+// ── TAB 4: Predict (CNN) ───────────────────────
+async function runPredCNN(){
+  clearAlert('pred-alert');
+  const imgFile = document.getElementById('pred-img-cnn').files[0];
+  if(!imgFile){ setAlert('pred-alert','err','Please upload an image.'); return; }
+
+  const mode = document.getElementById('cnn-load-mode').value;
+  const fd = new FormData();
+  fd.append('image', imgFile);
+  fd.append('input_size', document.getElementById('cnn-input-size').value);
+  fd.append('class_labels', document.getElementById('cnn-labels').value);
+
+  if(mode==='session' && sessionCNN){
+    fd.append('model_path', sessionCNN.path);
+    fd.append('ci_path',    sessionCNN.ci_path);
+  } else if(mode==='path'){
+    fd.append('model_path', document.getElementById('cnn-model-path').value);
+    fd.append('ci_path',    document.getElementById('cnn-ci-path').value);
+  } else {
+    const kerasFile = document.getElementById('pred-keras-file').files[0];
+    if(!kerasFile){ setAlert('pred-alert','err','Please upload a .keras / .h5 model file.'); return; }
+    fd.append('model_keras', kerasFile);
+  }
+
+  setAlert('pred-alert','info','Running CNN inference…');
+
+  try {
+    const resp = await fetch(API + '/predict_cnn', { method:'POST', body:fd });
+    const data = await resp.json();
+    if(!resp.ok || data.error){ setAlert('pred-alert','err', data.error||'CNN prediction error'); return; }
+
+    clearAlert('pred-alert');
+    showPredResults(data);
+  } catch(e) {
+    setAlert('pred-alert','err','Network error: '+e.message);
+  }
+}
+
+// ── Render prediction results ──────────────────
+function showPredResults(data){
+  document.getElementById('pred-label-text').textContent = '🎯 ' + (data.predicted_class || '—');
+  document.getElementById('pred-results').style.display = 'block';
+
+  // Update metrics panel from server response
+  if(data.metrics){
+    const mp = document.getElementById('pred-metrics-panel');
+    const mk = ['auc','accuracy','sensitivity','specificity'];
+    const mc = ['var(--blue)','var(--green)','var(--purple)','var(--pink)'];
+    const ml = ['AUC-ROC','ACCURACY','SENSITIVITY','SPECIFICITY'];
+    mp.innerHTML = mk.map((k,i)=>{
+      const v = data.metrics[k] != null ? (data.metrics[k]*100).toFixed(1)+'%' : '—';
+      return `<div class="metric"><div class="metric-val" style="color:${mc[i]}">${v}</div><div class="metric-lbl">${ml[i]}</div></div>`;
+    }).join('');
+  }
+
+  const barsEl = document.getElementById('pred-bars');
+  if(data.probabilities){
+    const barColors = ['linear-gradient(90deg,var(--purple),var(--pink))','linear-gradient(90deg,var(--green),var(--blue))','linear-gradient(90deg,var(--blue),var(--purple))','linear-gradient(90deg,var(--orange),var(--pink))'];
+    barsEl.innerHTML = Object.entries(data.probabilities).map(([cls,prob],i)=>{
+      const pct = Math.round(prob*100);
+      return `
+        <div class="pred-row">
+          <div class="pred-hdr">
+            <span class="pred-name">${cls.toUpperCase()}</span>
+            <span class="pred-pct">${pct}%</span>
+          </div>
+          <div class="pred-bg">
+            <div class="pred-fill" id="pb-${i}" style="width:0%;background:${barColors[i%barColors.length]};"></div>
+          </div>
+        </div>`;
+    }).join('');
+    // Animate bars
+    Object.keys(data.probabilities).forEach((_,i)=>{
+      const pct = Math.round(Object.values(data.probabilities)[i]*100);
+      setTimeout(()=>{ const el=document.getElementById('pb-'+i); if(el) el.style.width=pct+'%'; }, 200+i*200);
+    });
+  }
+}
+
+// ── Per-cluster intensity based on selected sub-features ─────────────────────
+// clusterIntensity declared early (top of script) to avoid ReferenceError
+// Updated whenever a feature toggle or sub-feature tag changes
+
+function updateBrainIntensity() {
+  // FOF: binary — instant full brightness
+  clusterIntensity.fof = activeFeats.has('fof') ? 1.0 : 0;
+
+  // GLCM: total selections = d + t (max 8), reaches 100% at 4 total selections
+  // 1 sel=0.49  2 sel=0.63  3 sel=0.81  4+ sel=1.0
+  if (activeFeats.has('glcm')) {
+    const d = getSelectedTags('glcm-d').length;     // 0-4
+    const t = getSelectedTags('glcm-theta').length; // 0-4
+    const total = d + t;                            // 0-8
+    const ratio = Math.min(total, 4) / 4;           // caps at 4 selections → 1.0
+    clusterIntensity.glcm = Math.min(1, 0.35 + ratio * 0.65);
+  } else {
+    clusterIntensity.glcm = 0;
+  }
+
+  // GLRLM: reaches 100% at 3 angles selected, stays max after
+  // 0=0.35  1=0.57  2=0.78  3+=1.0
+  if (activeFeats.has('glrlm')) {
+    const t = getSelectedTags('glrlm-theta').length; // 0-4
+    const ratio = Math.min(t, 3) / 3;               // caps at 3 → 1.0
+    clusterIntensity.glrlm = Math.min(1, 0.35 + ratio * 0.65);
+  } else {
+    clusterIntensity.glrlm = 0;
+  }
+
+  // GLSZM: max intensity immediately when toggled on (any connectivity = 1.0)
+  clusterIntensity.glszm = activeFeats.has('glszm') ? 1.0 : 0;
+}
+
+// Init on load
+updateBrainIntensity();
+
+function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function runDebug() {
+  const dir = document.getElementById('fe-dataset').value.trim();
+  if (!dir) { setAlert('fe-alert','err','Enter dataset path first.'); return; }
+  const btn = document.getElementById('btn-debug');
+  btn.disabled = true; btn.textContent = '⏳ DIAGNOSING...';
+  clearAlert('fe-alert');
+  try {
+    const resp = await fetch(API + '/debug_dataset', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ dataset_dir: dir })
+    });
+    const data = await resp.json();
+    if (data.error) {
+      setAlert('fe-alert','err', data.error);
+      if (data.traceback) {
+        document.getElementById('debug-results').style.display='block';
+        document.getElementById('debug-results').innerHTML =
+          '<div class="log-box" style="margin-top:10px;color:#ff8906">'+escHtml(data.traceback)+'</div>';
+      }
+      return;
+    }
+    let html = '<div class="card"><div class="card-label">DIAGNOSIS REPORT</div>';
+    html += '<div style="font-family:Space Mono,monospace;font-size:11px;line-height:1.9;">';
+    html += '<div style="color:var(--blue)">PATH: ' + escHtml(data.dataset_dir) + '</div>';
+    html += '<div style="color:var(--green)">Classes: ' + data.class_count + '</div><br>';
+    (data.classes||[]).forEach(function(cls) {
+      var ok = cls.fof_test && !cls.fof_test.error;
+      var col = ok ? 'var(--green)' : 'var(--pink)';
+      html += '<div style="border-left:3px solid '+col+';padding-left:12px;margin-bottom:12px;">';
+      html += '<div style="color:'+col+';font-weight:700;">' + escHtml(cls.name) + '</div>';
+      html += '<div>Images: '+cls.plain_images+' | Masks: '+cls.mask_files+'</div>';
+      html += '<div>Sample files: '+(cls.sample_images||[]).slice(0,4).map(escHtml).join(', ')+'</div>';
+      (cls.decode_tests||[]).forEach(function(t){
+        var ic = t.readable ? 'var(--green)' : 'var(--pink)';
+        html += '<div style="color:'+ic+'">[' + (t.readable?'OK':'FAIL') + '] '+escHtml(t.file)+(t.shape?' ('+t.shape.join('x')+'px)':'')+'</div>';
+      });
+      if (cls.roi_test) {
+        var rc = cls.roi_test.error ? 'var(--pink)' : 'var(--blue)';
+        html += '<div style="color:'+rc+'">ROI: '+cls.roi_test.regions_found+' regions'+(cls.roi_test.error?' ERROR: '+escHtml(cls.roi_test.error):'')+'</div>';
+      }
+      if (cls.fof_test) {
+        var fc = cls.fof_test.error ? 'var(--pink)' : 'var(--green)';
+        html += '<div style="color:'+fc+'">FOF: '+cls.fof_test.feature_count+' features'+(cls.fof_test.error?' ERROR: '+escHtml(cls.fof_test.error):'')+'</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+    var el = document.getElementById('debug-results');
+    el.style.display='block'; el.innerHTML=html;
+  } catch(e) {
+    setAlert('fe-alert','err','Debug failed: '+e.message);
+  } finally {
+    btn.disabled=false; btn.textContent='DIAGNOSE FOLDER';
+  }
+}
+
+
+// ── Init ───────────────────────────────────────
+updateNN();
+</script>
+
+<!-- FLASK BACKEND REFERENCE COMMENT:
+=================================================================
+  REQUIRED FLASK ENDPOINTS (paste into your Flask app.py):
+=================================================================
+
+  POST /health           → { "status":"ok", "version":"1.0" }
+
+  POST /extract_features → JSON body with dataset_dir, feature flags, params
+                           returns: { processed, skipped, classes, total_rows,
+                                      total_features, preview (5 rows), csv_b64 }
+
+  POST /train_ml         → multipart/form-data: train_csv, test_csv(opt),
+                           target_column, drop_first, test_ratio, model,
+                           scaler, feature_selection, fs_ratio
+                           returns: { metrics:{}, pkl_b64, confusion_matrix_b64,
+                                      session_key }
+
+  POST /train_cnn        → JSON body: be645_python, dataset_dir, output_dir,
+                           helpers_dir, base_model, img_h, img_w, batch_size,
+                           epochs, patience, lr
+                           Streams text lines (NDJSON or raw stdout).
+                           Final line: RESULTS_JSON:{...}
+
+  POST /predict_ml       → multipart: image, mask(opt), session_key OR model_pkl
+                           returns: { predicted_class, probabilities:{cls:prob},
+                                      metrics:{auc,accuracy,sensitivity,specificity} }
+
+  POST /predict_cnn      → multipart: image, model_path OR model_keras,
+                           ci_path, class_labels, input_size
+                           returns: { predicted_class, probabilities:{cls:prob} }
+=================================================================
+-->
+</body>
+</html>
