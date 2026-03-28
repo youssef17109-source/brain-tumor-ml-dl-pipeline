@@ -625,6 +625,22 @@
     <div class="card">
       <div class="card-label">Extraction Summary</div>
       <div class="g3" id="fe-metrics" style="margin-bottom:14px;"></div>
+
+      <!-- Before / After ROI sample -->
+      <div id="fe-sample-wrap" style="display:none; margin-bottom:18px;">
+        <div class="card-label">ROI EXTRACTION SAMPLE</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+          <div style="text-align:center;">
+            <div style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:2px; color:var(--muted); margin-bottom:8px;">BEFORE — ORIGINAL IMAGE</div>
+            <img id="fe-sample-before" src="" style="max-width:100%; border-radius:8px; border:1px solid var(--border);">
+          </div>
+          <div style="text-align:center;">
+            <div style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:2px; color:var(--green); margin-bottom:8px;">AFTER — EXTRACTED ROI</div>
+            <img id="fe-sample-after" src="" style="max-width:100%; border-radius:8px; border:1px solid rgba(44,182,125,0.4); box-shadow:0 0 20px rgba(44,182,125,0.15);">
+          </div>
+        </div>
+      </div>
+
       <div id="fe-table-wrap" style="overflow-x:auto;"></div>
       <div id="fe-dl-wrap" style="margin-top:14px;"></div>
     </div>
@@ -2110,20 +2126,51 @@ async function runFE(){
     let _fetchDone = false;
     let _fetchErr  = null;
 
-    fetch(API + '/extract_features', {
-      method: 'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    }).then(async r => {
-      const d = await r.json();
-      _respData = r.ok ? d : { error: d.error || 'Server error ' + r.status };
-      _fetchDone = true;
-    }).catch(e => {
-      _fetchErr = e.message;
-      _fetchDone = true;
-    });
-
-    // Safety timeout — if fetch never resolves after 10 min, bail
-    setTimeout(() => { if (!_fetchDone) { _fetchErr = 'Request timed out'; _fetchDone = true; } }, 600000);
+    // Streaming fetch — receives PROGRESS: lines every 10 images + RESULTS_JSON: at end
+    (async () => {
+      try {
+        const r = await fetch(API + '/extract_features', {
+          method: 'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        if (!r.ok) {
+          const e = await r.json().catch(()=>({error:'Server error ' + r.status}));
+          _respData = e; _fetchDone = true; return;
+        }
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const {done, value} = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, {stream: true});
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            if (line.startsWith('RESULTS_JSON:')) {
+              try { _respData = JSON.parse(line.replace('RESULTS_JSON:','')); }
+              catch(e) { _fetchErr = 'Bad JSON response'; }
+              _fetchDone = true;
+            } else if (line.startsWith('PROGRESS:')) {
+              // PROGRESS:done/total:pct:cls:processed:skipped
+              const parts = line.replace('PROGRESS:','').split(':');
+              const [dt, pct, cls, proc, skip] = parts;
+              const [done2, total2] = dt.split('/');
+              feUpdateLive(cls, proc, skip, total2);
+              feSetProgress(parseFloat(pct), `PROCESSING ${cls.toUpperCase()}…`);
+            } else if (line.startsWith('TOTAL:')) {
+              feUpdateLive(undefined, 0, 0, line.replace('TOTAL:','').trim());
+            } else if (line.startsWith('ERROR:')) {
+              _fetchErr = line.replace('ERROR:','').trim();
+              _fetchDone = true;
+            }
+          }
+        }
+        if (!_fetchDone) { _fetchErr = 'No result received'; _fetchDone = true; }
+      } catch(e) {
+        _fetchErr = e.message; _fetchDone = true;
+      }
+    })();
 
     // ── Cycle through steps while fetch runs — neuron lights up segment by segment
     feCompleteStep('step-scan');
@@ -2154,9 +2201,9 @@ async function runFE(){
       await new Promise(r => setTimeout(r, 350));
     }
 
-    if (_fetchErr) throw new Error(_fetchErr);
 
     const data = _respData;
+    if (!data) { setAlert('fe-alert','err', 'No response from server — extraction may still be running. Check terminal.'); return; }
     if (data.error) { setAlert('fe-alert','err', data.error); return; }
 
     // ── Complete all steps + fully light neuron ───────────────────────────────
@@ -2207,12 +2254,19 @@ async function runFE(){
       document.getElementById('fe-dl-wrap').appendChild(a);
     }
 
+    // Show before/after ROI sample if returned by backend
+    if (data.sample_before_b64 && data.sample_after_b64) {
+      document.getElementById('fe-sample-before').src = 'data:image/png;base64,' + data.sample_before_b64;
+      document.getElementById('fe-sample-after').src  = 'data:image/png;base64,' + data.sample_after_b64;
+      document.getElementById('fe-sample-wrap').style.display = 'block';
+    }
+
     document.getElementById('fe-results').style.display = 'block';
     window._lastCsvB64  = data.csv_b64;
     window._lastCsvName = payload.output_csv;
+    window._lastTargetSize = payload.target_size;  // remember for training
 
   } catch(e) {
-    console.error('[FE] Error:', e);
     feSetProgress(0, 'ERROR');
     setAlert('fe-alert','err', e.message + ' — Is Flask running at ' + API + '?');
   } finally {
@@ -2248,6 +2302,7 @@ async function runML(){
   fd.append('scaler',         document.getElementById('ml-scaler').value);
   fd.append('feature_selection', document.getElementById('ml-fs').value);
   fd.append('fs_ratio',       mlFsRatio);
+  fd.append('target_size_used', window._lastTargetSize || document.getElementById('fe-size').value || 128);
 
   try {
     const resp = await fetch(API + '/train_ml', { method:'POST', body:fd });
@@ -2440,6 +2495,7 @@ async function runPredML(){
     fd.append('model_pkl', pkl);
   }
 
+  fd.append('target_size', window._lastTargetSize || 128);
   setAlert('pred-alert','info','Running inference…');
 
   try {

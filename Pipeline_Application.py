@@ -282,12 +282,8 @@ def _extract_region_features(
 
 @app.route("/")
 def index():
-
     print("NEW INDEX ROUTE ACTIVE", flush=True)
-    # Use the same directory as this script so the app works
-    # from any location without manual path changes.
     path = _THIS_DIR
-
     return send_from_directory(path, "Pipeline Application Website.html")
 
     if os.path.isfile(p):
@@ -322,130 +318,162 @@ def health():
 
 @app.route("/extract_features", methods=["POST"])
 def extract_features():
-    try:
-        body = request.get_json(force=True)
+    body = request.get_json(force=True)
 
-        dataset_dir  = body.get("dataset_dir",  "").strip()
-        output_csv   = body.get("output_csv",   "extracted_features.csv")
-        target_size  = int(body.get("target_size",  128))
-        ignore_zeros = bool(body.get("ignore_zeros", True))
-        normalize    = bool(body.get("normalize",    True))
-        do_fof       = bool(body.get("do_fof",   True))
-        do_glcm      = bool(body.get("do_glcm",  False))
-        do_glrlm     = bool(body.get("do_glrlm", False))
-        do_glszm     = bool(body.get("do_glszm", False))
-        glcm_d       = body.get("glcm_d",      [1])
-        glcm_theta   = body.get("glcm_theta",  [0])
-        glcm_sym     = bool(body.get("glcm_sym", False))
-        glrlm_theta  = body.get("glrlm_theta", [0])
-        glszm_conn   = body.get("glszm_conn",  [4])
+    dataset_dir  = body.get("dataset_dir",  "").strip()
+    output_csv   = body.get("output_csv",   "extracted_features.csv")
+    target_size  = int(body.get("target_size",  128))
+    ignore_zeros = bool(body.get("ignore_zeros", True))
+    normalize    = bool(body.get("normalize",    True))
+    do_fof       = bool(body.get("do_fof",   True))
+    do_glcm      = bool(body.get("do_glcm",  False))
+    do_glrlm     = bool(body.get("do_glrlm", False))
+    do_glszm     = bool(body.get("do_glszm", False))
+    glcm_d       = body.get("glcm_d",      [1])
+    glcm_theta   = body.get("glcm_theta",  [0])
+    glcm_sym     = bool(body.get("glcm_sym", False))
+    glrlm_theta  = body.get("glrlm_theta", [0])
+    glszm_conn   = body.get("glszm_conn",  [4])
 
-        if not dataset_dir or not os.path.isdir(dataset_dir):
-            return jsonify({"error": f"Dataset directory not found: '{dataset_dir}'"}), 400
-        if not any([do_fof, do_glcm, do_glrlm, do_glszm]):
-            return jsonify({"error": "Select at least one feature type."}), 400
+    if not dataset_dir or not os.path.isdir(dataset_dir):
+        return jsonify({"error": f"Dataset directory not found: '{dataset_dir}'"}), 400
+    if not any([do_fof, do_glcm, do_glrlm, do_glszm]):
+        return jsonify({"error": "Select at least one feature type."}), 400
 
-        class_dirs = sorted([
-            d for d in os.listdir(dataset_dir)
-            if os.path.isdir(os.path.join(dataset_dir, d))
-        ])
-        if not class_dirs:
-            return jsonify({"error": "No class subfolders found."}), 400
+    IMG_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
 
-        print(f"[FE] Classes: {class_dirs}", flush=True)
-        IMG_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
+    def _stream():
+        try:
+            class_dirs = sorted([
+                d for d in os.listdir(dataset_dir)
+                if os.path.isdir(os.path.join(dataset_dir, d))
+            ])
+            if not class_dirs:
+                yield 'ERROR:No class subfolders found.\n'; return
 
-        total_images = sum(
-            1
-            for cls in class_dirs
-            for f in os.listdir(os.path.join(dataset_dir, cls))
-            if os.path.splitext(f)[1].lower() in IMG_EXTS and "_mask" not in f.lower()
-        )
-        print(f"[FE] Total images: {total_images}", flush=True)
+            print(f"[FE] Classes: {class_dirs}", flush=True)
 
-        history, processed, skipped, done_count = [], 0, 0, 0
+            total_images = sum(
+                1 for cls in class_dirs
+                for f in os.listdir(os.path.join(dataset_dir, cls))
+                if os.path.splitext(f)[1].lower() in IMG_EXTS and "_mask" not in f.lower()
+            )
+            print(f"[FE] Total images: {total_images}", flush=True)
+            yield f"TOTAL:{total_images}\n"
 
-        for cls in class_dirs:
-            cls_path  = os.path.join(dataset_dir, cls)
-            all_files = sorted(os.listdir(cls_path))
-            img_files = [
-                f for f in all_files
-                if os.path.splitext(f)[1].lower() in IMG_EXTS
-                and "_mask" not in f.lower()
-            ]
+            history, processed, skipped, done_count = [], 0, 0, 0
+            _sample_before_b64 = _sample_after_b64 = None
+            _sample_saved = False
 
-            for img_name in img_files:
-                stem, ext = os.path.splitext(img_name)
-                img_path  = os.path.join(cls_path, img_name)
-                mask_path = os.path.join(cls_path, f"{stem}_mask{ext}")
+            for cls in class_dirs:
+                cls_path  = os.path.join(dataset_dir, cls)
+                all_files = sorted(os.listdir(cls_path))
+                img_files = [
+                    f for f in all_files
+                    if os.path.splitext(f)[1].lower() in IMG_EXTS
+                    and "_mask" not in f.lower()
+                ]
 
-                img_arr  = _imread(img_path)
-                if img_arr is None:
-                    skipped += 1; done_count += 1; continue
+                for img_name in img_files:
+                    stem, ext = os.path.splitext(img_name)
+                    img_path  = os.path.join(cls_path, img_name)
+                    mask_path = os.path.join(cls_path, f"{stem}_mask{ext}")
 
-                mask_arr = _imread(mask_path) if os.path.exists(mask_path) \
-                           else np.ones_like(img_arr) * 255
-
-                try:
-                    regions = ExtractMultipleObjectsFromROI(
-                        img_arr, mask_arr,
-                        targetSize=(target_size, target_size),
-                        cntAreaThreshold=0, sortByX=True,
-                    )
-                    if not regions:
+                    img_arr  = _imread(img_path)
+                    if img_arr is None:
                         skipped += 1; done_count += 1; continue
 
-                    feat = _extract_region_features(
-                        regions[0], do_fof, do_glcm, do_glrlm, do_glszm,
-                        normalize, ignore_zeros,
-                        glcm_d, glcm_theta, glcm_sym, glrlm_theta, glszm_conn,
-                    )
-                    if feat:
-                        history.append({"File": img_name, **feat, "Class": cls})
-                        processed += 1
-                    else:
+                    mask_arr = _imread(mask_path) if os.path.exists(mask_path) \
+                               else np.ones_like(img_arr) * 255
+
+                    try:
+                        if img_arr.shape[0] != target_size or img_arr.shape[1] != target_size:
+                            img_arr_rs  = cv2.resize(img_arr,  (target_size, target_size), interpolation=cv2.INTER_AREA)
+                            mask_arr_rs = cv2.resize(mask_arr, (target_size, target_size), interpolation=cv2.INTER_NEAREST)
+                        else:
+                            img_arr_rs, mask_arr_rs = img_arr, mask_arr
+
+                        regions = ExtractMultipleObjectsFromROI(
+                            img_arr_rs, mask_arr_rs,
+                            targetSize=(target_size, target_size),
+                            cntAreaThreshold=0, sortByX=True,
+                        )
+                        region_to_use = regions[0] if regions else img_arr_rs
+
+                        feat = _extract_region_features(
+                            region_to_use, do_fof, do_glcm, do_glrlm, do_glszm,
+                            normalize, ignore_zeros,
+                            glcm_d, glcm_theta, glcm_sym, glrlm_theta, glszm_conn,
+                        )
+                        if feat:
+                            history.append({"File": img_name, **feat, "Class": cls})
+                            processed += 1
+                            if not _sample_saved:
+                                try:
+                                    _, bb = cv2.imencode(".png", cv2.cvtColor(img_arr, cv2.COLOR_GRAY2BGR) if img_arr.ndim==2 else img_arr)
+                                    _, ab = cv2.imencode(".png", cv2.cvtColor(region_to_use, cv2.COLOR_GRAY2BGR) if region_to_use.ndim==2 else region_to_use)
+                                    _sample_before_b64 = base64.b64encode(bb).decode()
+                                    _sample_after_b64  = base64.b64encode(ab).decode()
+                                    _sample_saved = True
+                                except Exception: pass
+                        else:
+                            skipped += 1
+
+                    except MemoryError:
                         skipped += 1
+                        print(f"[FE] MemoryError {cls}/{img_name}", flush=True)
+                    except Exception as ex:
+                        skipped += 1
+                        if skipped <= 5:
+                            print(f"[FE] Error {cls}/{img_name}: {ex}", flush=True)
 
-                except Exception as ex:
-                    skipped += 1
-                    if skipped <= 3:
-                        print(f"[FE] Error {cls}/{img_name}: {ex}", flush=True)
+                    done_count += 1
+                    # Send progress every 10 images — keeps browser connection alive
+                    if done_count % 5 == 0 or done_count == total_images:
+                        pct = round(done_count / max(total_images,1) * 100, 1)
+                        print(f"[FE] PROGRESS:{done_count}/{total_images}:{pct}:{cls}:{processed}:{skipped}", flush=True)
+                        yield f"PROGRESS:{done_count}/{total_images}:{pct}:{cls}:{processed}:{skipped}\n"
 
-                done_count += 1
-                if done_count % 50 == 0 or done_count == total_images:
-                    pct = round(done_count / max(total_images,1) * 100, 1)
-                    print(f"[FE] PROGRESS:{done_count}/{total_images}:{pct}:{cls}:{processed}:{skipped}", flush=True)
+            if not history:
+                yield 'ERROR:No features extracted. Check dataset structure.\n'; return
 
-        print(f"[FE] Done. processed={processed} skipped={skipped}", flush=True)
+            feat_df      = pd.DataFrame(history)
+            feature_cols = [c for c in feat_df.columns if c not in ("File", "Class")]
 
-        if not history:
-            return jsonify({"error": "No features extracted. Check dataset structure."}), 400
+            csv_save_path = os.path.join(dataset_dir, output_csv)
+            feat_df.to_csv(csv_save_path, index=False)
+            print(f"[FE] CSV saved: {csv_save_path}", flush=True)
 
-        feat_df      = pd.DataFrame(history)
-        feature_cols = [c for c in feat_df.columns if c not in ("File", "Class")]
-        csv_b64      = base64.b64encode(feat_df.to_csv(index=False).encode()).decode()
+            preview_df = feat_df.head(5).copy()
+            for c in preview_df.select_dtypes(include=[np.floating]).columns:
+                preview_df[c] = preview_df[c].round(5)
 
-        preview_df = feat_df.head(5).copy()
-        for c in preview_df.select_dtypes(include=[np.floating]).columns:
-            preview_df[c] = preview_df[c].round(5)
+            sample_csv_b64 = base64.b64encode(feat_df.to_csv(index=False).encode()).decode()
+            key = str(uuid.uuid4())
+            SESSION[key] = {"feat_df": feat_df, "type": "features"}
 
-        key = str(uuid.uuid4())
-        SESSION[key] = {"feat_df": feat_df, "type": "features"}
+            resp = {
+                "processed":      processed,
+                "skipped":        skipped,
+                "classes":        class_dirs,
+                "total_rows":     len(feat_df),
+                "total_features": len(feature_cols),
+                "preview":        preview_df.to_dict(orient="records"),
+                "csv_b64":        sample_csv_b64,
+                "csv_path":       csv_save_path,
+                "session_key":    key,
+            }
+            if _sample_before_b64: resp["sample_before_b64"] = _sample_before_b64
+            if _sample_after_b64:  resp["sample_after_b64"]  = _sample_after_b64
 
-        return jsonify({
-            "processed":      processed,
-            "skipped":        skipped,
-            "classes":        class_dirs,
-            "total_rows":     len(feat_df),
-            "total_features": len(feature_cols),
-            "preview":        preview_df.to_dict(orient="records"),
-            "csv_b64":        csv_b64,
-            "session_key":    key,
-        })
+            yield "RESULTS_JSON:" + json.dumps(resp) + "\n"
 
-    except Exception as ex:
-        traceback.print_exc()
-        return jsonify({"error": str(ex)}), 500
+        except Exception as ex:
+            traceback.print_exc()
+            yield f"ERROR:{str(ex)}\n"
+
+    return Response(stream_with_context(_stream()), mimetype="text/plain",
+                    headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
 
 
 @app.route("/debug_dataset", methods=["POST"])
@@ -506,7 +534,8 @@ def debug_dataset():
                         sample_mask = np.ones_like(sample_img) * 255
                     try:
                         _, mask_bin = cv2.threshold(sample_mask, 10, 255, cv2.THRESH_BINARY)
-                        regs = ExtractMultipleObjectsFromROI(sample_img, mask_bin, targetSize=(128, 128), cntAreaThreshold=0, sortByX=True)
+                        _dbg_sz = int(body.get("target_size", 128))
+                        regs = ExtractMultipleObjectsFromROI(sample_img, mask_bin, targetSize=(_dbg_sz, _dbg_sz), cntAreaThreshold=0, sortByX=True)
                         cls_info["roi_test"] = {"regions_found": len(regs)}
                         if regs:
                             fof, _ = FirstOrderFeatures2D(regs[0], isNorm=True, ignoreZeros=True)
@@ -544,7 +573,7 @@ def train_ml():
         target_col    = request.form.get("target_column",     "Class")
         drop_first    = request.form.get("drop_first",        "true").lower() == "true"
         test_ratio    = float(request.form.get("test_ratio",  0.2))
-        model_choice  = request.form.get("model",             "RF")
+        model_choice  = request.form.get("model",             "MLP")
         scaler_choice = request.form.get("scaler",            "") or None
         fs_tech       = request.form.get("feature_selection", "") or None
         fs_ratio      = int(request.form.get("fs_ratio",      80))
@@ -579,7 +608,10 @@ def train_ml():
         pkl_b64 = base64.b64encode(pickle.dumps(objects)).decode()
         # Also store the target_size used during training inside objects
         # so prediction can use the exact same resize dimensions
-        objects["_target_size"] = int(request.form.get("target_size_used", 128))
+        # Store the target_size used during feature extraction so predict_ml uses the same
+        # Frontend sends target_size_used; fall back to reading from CSV column names if missing
+        _ts = request.form.get("target_size_used", "").strip()
+        objects["_target_size"] = int(_ts) if _ts.isdigit() else 128
         key     = str(uuid.uuid4())
         SESSION[key] = {"objects": objects, "type": "ml_model"}
 
@@ -789,9 +821,19 @@ def predict_ml():
             mask = np.ones_like(img) * 255
             print(f"[PRED] No mask — using full white mask (same as training fallback)", flush=True)
 
-        # Always go through ExtractMultipleObjectsFromROI — same as training pipeline
-        # Use same target_size as training (stored in pkl, default 128)
-        pred_target_size = objects.get("_target_size", 128)
+        # Use the target_size stored in the pkl from training time.
+        # If missing (old pkl), try to infer from the request, then fall back to 128.
+        _ts_override = request.form.get("target_size", "").strip()
+        if _ts_override.isdigit():
+            pred_target_size = int(_ts_override)
+        else:
+            pred_target_size = objects.get("_target_size", None)
+            if pred_target_size is None:
+                # Last resort: use the smaller image dimension as a reasonable default
+                pred_target_size = min(img.shape[:2])
+                pred_target_size = min(pred_target_size, 512)  # cap at 512
+                print(f"[PRED] _target_size missing from pkl — inferred {pred_target_size} from image", flush=True)
+        pred_target_size = int(pred_target_size)
         print(f"[PRED] Using target_size={pred_target_size}", flush=True)
         try:
             _, mask_bin = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
@@ -805,7 +847,6 @@ def predict_ml():
                 region = regs[0]
                 print(f"[PRED] ROI extracted: {region.shape}", flush=True)
             else:
-                # No contours found — fall back to plain resize
                 region = cv2.resize(img, (pred_target_size, pred_target_size))
                 print(f"[PRED] No ROI found — using plain resize", flush=True)
         except Exception as roi_err:
@@ -957,7 +998,17 @@ def predict_cnn():
             with open(ci_path) as f:
                 ci_data = json.load(f)
             class_indices = ci_data.get("class_indices", {})
-            input_hw = int(ci_data.get("input_shape", [input_hw])[0])
+            # input_shape stored as [H, W, C] — use H as the resize target
+            _shape = ci_data.get("input_shape", None)
+            if _shape and len(_shape) >= 2:
+                input_hw = int(_shape[0])   # use stored H from training
+            # If model has a known input shape, use that as ground truth
+            try:
+                model_input = cnn_model.input_shape  # (None, H, W, C)
+                if model_input and len(model_input) == 4:
+                    input_hw = int(model_input[1])
+            except Exception:
+                pass
         elif class_labels_raw:
             labels = [l.strip() for l in class_labels_raw.split(",") if l.strip()]
             class_indices = {l: i for i, l in enumerate(labels)}
@@ -989,7 +1040,29 @@ def predict_cnn():
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
     print("=" * 55)
     print("  NEXUS Flask API v2.3  —  http://localhost:5000")
     print("=" * 55)
-    app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
+
+    # Try waitress first (no request timeout, production-grade)
+    # If not installed, fall back to Flask dev server with extended timeout
+    try:
+        from waitress import serve
+        print("  Using waitress WSGI server (no timeout limits)", flush=True)
+        serve(app, host="127.0.0.1", port=5000, threads=4,
+              channel_timeout=3600,   # 1 hour max per request
+              cleanup_interval=30)
+    except ImportError:
+        print("  waitress not found — installing...", flush=True)
+        import subprocess
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "waitress", "--quiet"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            from waitress import serve
+            print("  Using waitress WSGI server", flush=True)
+            serve(app, host="127.0.0.1", port=5000, threads=4, channel_timeout=3600)
+        except Exception:
+            print("  Falling back to Flask dev server", flush=True)
+            app.run(host="127.0.0.1", port=5000, debug=False, threaded=True, use_reloader=False)
