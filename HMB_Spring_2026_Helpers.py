@@ -40,7 +40,7 @@ from tensorflow.keras.applications import *  # Import all pre-trained models fro
 
 # To avoid RecursionError in large images.
 # Default recursion limit is 1000.
-sys.setrecursionlimit(10 ** 8)
+sys.setrecursionlimit(10 ** 9)
 
 # Suppress warnings from the `shutup` library.
 shutup.please()  # Suppress all warnings from the `shutup` library.

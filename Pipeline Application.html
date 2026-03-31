@@ -850,10 +850,8 @@
           <label class="lbl">Dataset Directory</label>
           <input id="dl-dataset" class="inp path-input" type="text" placeholder="/path/to/Dataset">
         </div>
-        <div style="margin-bottom:12px;">
-          <label class="lbl">Output Directory</label>
-          <input id="dl-output" class="inp path-input" type="text" value="./CNN_Output">
-        </div>
+        <!-- dl-output kept hidden — backend needs it to save model, but user doesn't set it -->
+        <input id="dl-output" type="hidden" value="./CNN_Output">
         <div>
           <label class="lbl">Helpers Directory</label>
           <input id="dl-helpers" class="inp path-input" type="text" placeholder="/path/containing/HMB_Spring_2026_Helpers.py">
@@ -939,7 +937,11 @@
   <div id="dl-results" style="display:none; margin-top:24px;">
     <div class="card">
       <div class="card-label">Test Set Results</div>
-      <div class="g4" id="dl-metrics" style="gap:10px;"></div>
+      <div id="dl-metrics" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Trained Model</div>
+      <div id="dl-dl-wrap"></div>
     </div>
   </div>
 </div>
@@ -959,18 +961,16 @@
   <div class="card" style="margin-bottom:18px;">
     <div class="card-label">Model Type</div>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <div class="feat-toggle on" id="pred-mode-ml" onclick="setPredMode('ml')" style="flex:1; min-width:200px;">
-        <div>
-          <div class="feat-name">ML MODEL</div>
-          <div class="feat-desc">.pkl — uses extracted FOF features</div>
-        </div>
+      <div class="feat-toggle on" id="pred-mode-ml" onclick="setPredMode('ml')" style="flex:1; min-width:180px;">
+        <div><div class="feat-name">ML MODEL</div><div class="feat-desc">.pkl — uses extracted features</div></div>
         <div class="sw"></div>
       </div>
-      <div class="feat-toggle" id="pred-mode-cnn" onclick="setPredMode('cnn')" style="flex:1; min-width:200px;">
-        <div>
-          <div class="feat-name">CNN MODEL</div>
-          <div class="feat-desc">.keras / .h5 — direct image inference</div>
-        </div>
+      <div class="feat-toggle" id="pred-mode-cnn" onclick="setPredMode('cnn')" style="flex:1; min-width:180px;">
+        <div><div class="feat-name">CNN MODEL</div><div class="feat-desc">.keras / .h5 — direct image</div></div>
+        <div class="sw"></div>
+      </div>
+      <div class="feat-toggle" id="pred-mode-ensemble" onclick="setPredMode('ensemble')" style="flex:1; min-width:180px;">
+        <div><div class="feat-name" style="color:var(--orange);">ENSEMBLE</div><div class="feat-desc">ML + CNN — weighted late fusion</div></div>
         <div class="sw"></div>
       </div>
     </div>
@@ -1054,6 +1054,57 @@
 
         <button class="run-btn" onclick="runPredCNN()">▶ PREDICT (CNN)</button>
       </div>
+
+      <!-- ENSEMBLE mode -->
+      <div id="pred-ensemble-wrap" style="display:none;">
+        <div class="card">
+          <div class="card-label">ML Model (Ensemble)</div>
+          <div class="chk-row on" id="chk-ens-session-ml" onclick="toggleChk(this)">
+            <div class="chk-box">✓</div><span class="chk-txt">Use ML from this session (Tab 2)</span>
+          </div>
+          <div id="ens-pkl-upload" style="display:none;margin-top:10px;">
+            <label class="lbl">Upload .pkl model</label>
+            <input id="ens-pkl" type="file" accept=".pkl,.p" class="inp" style="padding:8px;">
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">CNN Model (Ensemble)</div>
+          <div style="margin-bottom:10px;">
+            <label class="lbl">Load Mode</label>
+            <select id="ens-cnn-load-mode" class="inp" onchange="updateEnsLoadMode()">
+              <option value="session">From session (Tab 3)</option>
+              <option value="path">From file path</option>
+            </select>
+          </div>
+          <div id="ens-cnn-path-wrap" style="display:none;">
+            <div style="margin-bottom:8px;"><label class="lbl">Model Path (.keras)</label>
+              <input id="ens-model-path" class="inp path-input" type="text" placeholder="/path/to/Model.keras"></div>
+            <div><label class="lbl">Class Indices JSON Path</label>
+              <input id="ens-ci-path" class="inp path-input" type="text" placeholder="/path/to/class_indices.json"></div>
+          </div>
+          <div style="margin-top:10px;"><label class="lbl">CNN Input Size (px)</label>
+            <input id="ens-cnn-size" class="inp" type="number" value="256" min="32" step="32"></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Upload Image</div>
+          <div style="margin-bottom:10px;"><label class="lbl">Medical Image</label>
+            <input id="ens-img" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;"></div>
+          <div><label class="lbl">Mask (optional, for ML)</label>
+            <input id="ens-mask" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Fusion Weights</div>
+          <div class="slider-row">
+            <div class="slider-hdr"><span class="slider-lbl">ML WEIGHT</span><span class="slider-val" id="ens-ml-w-val">50%</span></div>
+            <input type="range" min="10" max="90" step="5" value="50" id="ens-ml-weight"
+              oninput="document.getElementById('ens-ml-w-val').textContent=this.value+'%';
+                       document.getElementById('ens-cnn-w-val').textContent=(100-+this.value)+'%';">
+            <div class="slider-hdr" style="margin-top:6px;"><span class="slider-lbl">CNN WEIGHT</span><span class="slider-val" id="ens-cnn-w-val">50%</span></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px;font-family:'Space Mono',monospace;">Weighted average of probability vectors — late fusion</div>
+          </div>
+        </div>
+        <button class="run-btn" style="background:linear-gradient(135deg,var(--orange),var(--pink));" onclick="runPredEnsemble()">▶ ENSEMBLE PREDICT</button>
+      </div>
     </div>
 
     <!-- RIGHT: results + metrics -->
@@ -1063,10 +1114,36 @@
       <div id="pred-results" style="display:none;">
         <div class="card">
           <div class="card-label">Prediction Result</div>
-          <div id="pred-label-banner" style="padding:20px; border-radius:10px; text-align:center; background:linear-gradient(135deg,var(--purple),var(--blue)); margin-bottom:16px;">
-            <div style="font-family:'Space Mono',monospace; font-size:2rem; color:white; font-weight:700;" id="pred-label-text">—</div>
+          <div id="pred-label-banner" style="padding:20px;border-radius:10px;text-align:center;background:linear-gradient(135deg,var(--purple),var(--blue));margin-bottom:16px;">
+            <div style="font-family:'Space Mono',monospace;font-size:2rem;color:white;font-weight:700;" id="pred-label-text">—</div>
           </div>
           <div id="pred-bars"></div>
+        </div>
+      </div>
+
+      <div id="ens-results" style="display:none;">
+        <div class="card" style="border-color:rgba(255,137,6,0.4);box-shadow:0 0 24px rgba(255,137,6,0.1);">
+          <div class="card-label" style="color:var(--orange);">⚡ ENSEMBLE PREDICTION</div>
+          <div style="padding:16px;border-radius:10px;text-align:center;background:linear-gradient(135deg,var(--orange),var(--pink));margin-bottom:14px;">
+            <div style="font-size:10px;font-family:'Space Mono',monospace;color:rgba(255,255,255,0.7);letter-spacing:2px;margin-bottom:4px;">COMBINED ML + CNN</div>
+            <div style="font-family:'Space Mono',monospace;font-size:2rem;color:white;font-weight:700;" id="ens-label-text">—</div>
+          </div>
+          <div id="ens-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Individual Model Results</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--blue);letter-spacing:2px;margin-bottom:6px;">ML PREDICTION</div>
+              <div id="ens-ml-label" style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;margin-bottom:6px;">—</div>
+              <div id="ens-ml-bars"></div>
+            </div>
+            <div>
+              <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--green);letter-spacing:2px;margin-bottom:6px;">CNN PREDICTION</div>
+              <div id="ens-cnn-label" style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;margin-bottom:6px;">—</div>
+              <div id="ens-cnn-bars"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2036,13 +2113,31 @@ function resetFEResult(){
 }
 
 function setPredMode(mode){
-  const ml = document.getElementById('pred-mode-ml');
-  const cnn = document.getElementById('pred-mode-cnn');
-  if(mode==='ml'){ ml.classList.add('on'); cnn.classList.remove('on'); }
-  else           { cnn.classList.add('on'); ml.classList.remove('on'); }
-  document.getElementById('pred-ml-wrap').style.display = mode==='ml'?'block':'none';
-  document.getElementById('pred-cnn-wrap').style.display = mode==='cnn'?'block':'none';
+  ['ml','cnn','ensemble'].forEach(m=>{
+    const el=document.getElementById('pred-mode-'+m);
+    if(el) el.classList.toggle('on',m===mode);
+  });
+  document.getElementById('pred-ml-wrap').style.display       = mode==='ml'?'block':'none';
+  document.getElementById('pred-cnn-wrap').style.display      = mode==='cnn'?'block':'none';
+  document.getElementById('pred-ensemble-wrap').style.display = mode==='ensemble'?'block':'none';
+  document.getElementById('pred-results').style.display='none';
+  document.getElementById('ens-results').style.display='none';
 }
+
+function updateEnsLoadMode(){
+  const mode=document.getElementById('ens-cnn-load-mode').value;
+  document.getElementById('ens-cnn-path-wrap').style.display=mode==='path'?'block':'none';
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const ec=document.getElementById('chk-ens-session-ml');
+  if(ec) ec.addEventListener('click',()=>{
+    setTimeout(()=>{
+      const on=document.getElementById('chk-ens-session-ml').classList.contains('on');
+      document.getElementById('ens-pkl-upload').style.display=on?'none':'block';
+    },10);
+  });
+});
 
 // session ML checkbox → show/hide pkl upload
 document.getElementById('chk-use-session-ml').addEventListener('click',()=>{
@@ -2156,6 +2251,30 @@ async function runFE(){
   const dir = document.getElementById('fe-dataset').value.trim();
   if(!dir){ setAlert('fe-alert','err','Please enter a valid dataset folder path.'); return; }
   if(activeFeats.size===0){ setAlert('fe-alert','err','Please select at least one feature family.'); return; }
+
+  // ── Full reset — runs BEFORE anything else every new extraction ──────────────
+  currentProgPct = 0;
+  feSetProgress(0, 'INITIALIZING…');
+  feResetSteps();
+  feUpdateLive('—', 0, 0, '—');
+  const fnEl = document.getElementById('ls-fname'); if(fnEl) fnEl.textContent = '—';
+  document.getElementById('fe-results').style.display = 'none';
+  document.getElementById('fe-metrics').innerHTML = '';
+  document.getElementById('fe-table-wrap').innerHTML = '';
+  document.getElementById('fe-dl-wrap').innerHTML = '';
+  const sw = document.getElementById('fe-sample-wrap');
+  if(sw) sw.style.display = 'none';
+  const sb = document.getElementById('fe-sample-before'); if(sb) sb.src = '';
+  const sa = document.getElementById('fe-sample-after');  if(sa) sa.src = '';
+  if(typeof nSegments !== 'undefined' && nSegments.length){
+    nSegments.forEach(seg => {
+      seg.active = false;
+      if(seg.glowMesh) seg.glowMesh.material.opacity = 0.04;
+      if(seg.hotspot)  seg.hotspot.material.opacity  = 0.08;
+      if(seg.arcMat)   seg.arcMat.opacity = 0;
+    });
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
 
   const btn = document.getElementById('btn-fe');
   btn.disabled = true; btn.textContent = '⏳ PROCESSING…';
@@ -2743,6 +2862,30 @@ function showDLResults(results){
   mc.innerHTML = html;
   mc.style.gridTemplateColumns = 'repeat(auto-fill,minmax(120px,1fr))';
   document.getElementById('dl-results').style.display='block';
+
+  // Download button for the saved model (path known from sessionCNN)
+  const dlWrap = document.getElementById('dl-dl-wrap');
+  if(dlWrap){
+    if(sessionCNN && sessionCNN.path){
+      dlWrap.innerHTML = `
+        <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--green);padding:10px;
+          background:rgba(44,182,125,0.08);border:1px solid rgba(44,182,125,0.3);border-radius:8px;margin-bottom:12px;">
+          ✓ MODEL SAVED TO DISK:<br>
+          <span style="color:var(--text);word-break:break-all;">${sessionCNN.path}</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <a class="dl-btn" href="${API}/download_file?path=${encodeURIComponent(sessionCNN.path)}" download>
+            ⬇ DOWNLOAD MODEL (.keras)
+          </a>
+          <a class="dl-btn" style="background:linear-gradient(135deg,var(--purple),var(--blue));"
+            href="${API}/download_file?path=${encodeURIComponent(sessionCNN.ci_path)}" download>
+            ⬇ DOWNLOAD CLASS INDICES (.json)
+          </a>
+        </div>`;
+    } else {
+      dlWrap.innerHTML = '<div style="font-size:12px;color:var(--muted);">Model path not available — check output directory.</div>';
+    }
+  }
 }
 
 // ── TAB 4: Predict (ML) ────────────────────────
@@ -2819,10 +2962,87 @@ async function runPredCNN(){
   }
 }
 
+// ── Ensemble helpers ─────────────────────────────────────────────────────────
+function renderBars(containerEl, probabilities, gradients){
+  if(!containerEl||!probabilities) return;
+  const defs=['linear-gradient(90deg,var(--purple),var(--pink))','linear-gradient(90deg,var(--green),var(--blue))','linear-gradient(90deg,var(--blue),var(--purple))','linear-gradient(90deg,var(--orange),var(--pink))'];
+  const colors=gradients||defs;
+  containerEl.innerHTML=Object.entries(probabilities).map(([cls,prob],i)=>{
+    const pct=Math.round(prob*100);
+    const uid='enspb-'+containerEl.id+'-'+i;
+    return `<div class="pred-row"><div class="pred-hdr"><span class="pred-name">${cls.toUpperCase()}</span><span class="pred-pct">${pct}%</span></div><div class="pred-bg"><div class="pred-fill" id="${uid}" style="width:0%;background:${colors[i%colors.length]};"></div></div></div>`;
+  }).join('');
+  Object.keys(probabilities).forEach((_,i)=>{
+    const pct=Math.round(Object.values(probabilities)[i]*100);
+    setTimeout(()=>{const el=document.getElementById('enspb-'+containerEl.id+'-'+i);if(el)el.style.width=pct+'%';},200+i*150);
+  });
+}
+
+async function runPredEnsemble(){
+  clearAlert('pred-alert');
+  const imgFile=document.getElementById('ens-img').files[0];
+  if(!imgFile){setAlert('pred-alert','err','Please upload an image.');return;}
+  const mlW=(+document.getElementById('ens-ml-weight').value)/100;
+  const cnnW=1-mlW;
+  setAlert('pred-alert','info','Running ensemble inference (ML + CNN in parallel)…');
+
+  const mlFd=new FormData();
+  mlFd.append('image',imgFile);
+  const mask=document.getElementById('ens-mask').files[0];
+  if(mask) mlFd.append('mask',mask);
+  const useSessionML=document.getElementById('chk-ens-session-ml').classList.contains('on');
+  if(useSessionML&&sessionML){ mlFd.append('session_key',sessionML); }
+  else {
+    const pkl=document.getElementById('ens-pkl').files[0];
+    if(!pkl){setAlert('pred-alert','err','Please upload a .pkl or train one in Tab 2.');return;}
+    mlFd.append('model_pkl',pkl);
+  }
+  mlFd.append('target_size',window._lastTargetSize||128);
+
+  const cnnFd=new FormData();
+  cnnFd.append('image',imgFile);
+  cnnFd.append('input_size',document.getElementById('ens-cnn-size').value);
+  const ensMode=document.getElementById('ens-cnn-load-mode').value;
+  if(ensMode==='session'&&sessionCNN){cnnFd.append('model_path',sessionCNN.path);cnnFd.append('ci_path',sessionCNN.ci_path);}
+  else{cnnFd.append('model_path',document.getElementById('ens-model-path').value);cnnFd.append('ci_path',document.getElementById('ens-ci-path').value);}
+
+  try{
+    const [mlResp,cnnResp]=await Promise.all([
+      fetch(API+'/predict_ml',{method:'POST',body:mlFd}),
+      fetch(API+'/predict_cnn',{method:'POST',body:cnnFd}),
+    ]);
+    const mlData=await mlResp.json();
+    const cnnData=await cnnResp.json();
+    if(mlData.error){setAlert('pred-alert','err','ML: '+mlData.error);return;}
+    if(cnnData.error){setAlert('pred-alert','err','CNN: '+cnnData.error);return;}
+
+    const allCls=[...new Set([...Object.keys(mlData.probabilities||{}),...Object.keys(cnnData.probabilities||{})])];
+    const fused={};
+    allCls.forEach(c=>{
+      fused[c]=mlW*(mlData.probabilities||{})[c]||0 + cnnW*(cnnData.probabilities||{})[c]||0;
+    });
+    const tot=Object.values(fused).reduce((a,b)=>a+b,0)||1;
+    Object.keys(fused).forEach(k=>fused[k]/=tot);
+    const winner=Object.entries(fused).reduce((a,b)=>b[1]>a[1]?b:a)[0];
+
+    clearAlert('pred-alert');
+    document.getElementById('ens-label-text').textContent='🎯 '+winner;
+    renderBars(document.getElementById('ens-bars'),fused,['linear-gradient(90deg,var(--orange),var(--pink))','linear-gradient(90deg,var(--blue),var(--purple))','linear-gradient(90deg,var(--green),var(--blue))']);
+    document.getElementById('ens-ml-label').textContent=mlData.predicted_class||'—';
+    renderBars(document.getElementById('ens-ml-bars'),mlData.probabilities);
+    document.getElementById('ens-cnn-label').textContent=cnnData.predicted_class||'—';
+    renderBars(document.getElementById('ens-cnn-bars'),cnnData.probabilities,['linear-gradient(90deg,var(--green),var(--blue))','linear-gradient(90deg,var(--blue),var(--purple))','linear-gradient(90deg,var(--orange),var(--pink))']);
+    document.getElementById('ens-results').style.display='block';
+    document.getElementById('pred-results').style.display='none';
+    setAlert('pred-alert','ok',`Ensemble: ${winner} | ML(${Math.round(mlW*100)}%) + CNN(${Math.round(cnnW*100)}%)`);
+  }catch(e){setAlert('pred-alert','err','Ensemble error: '+e.message);}
+}
+
 // ── Render prediction results ──────────────────
 function showPredResults(data){
   document.getElementById('pred-label-text').textContent = '🎯 ' + (data.predicted_class || '—');
   document.getElementById('pred-results').style.display = 'block';
+  document.getElementById('ens-results').style.display  = 'none';
 
   // Show all training metrics if session model was used
   const mp = document.getElementById('pred-metrics-panel');

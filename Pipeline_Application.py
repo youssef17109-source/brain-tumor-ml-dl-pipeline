@@ -306,6 +306,17 @@ def index():
 def favicon():
     return "", 204
 
+
+@app.route("/download_file", methods=["GET"])
+def download_file():
+    """Serve any file from disk for download — used for CNN model and class_indices."""
+    file_path = request.args.get("path", "").strip()
+    if not file_path or not os.path.isfile(file_path):
+        return jsonify({"error": f"File not found: {file_path}"}), 404
+    directory = os.path.dirname(os.path.abspath(file_path))
+    filename  = os.path.basename(file_path)
+    return send_from_directory(directory, filename, as_attachment=True)
+
 @app.route("/health", methods=["GET", "POST"])
 def health():
     return jsonify({"status": "ok", "version": "2.0",
