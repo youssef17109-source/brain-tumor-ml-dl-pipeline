@@ -306,17 +306,6 @@ def index():
 def favicon():
     return "", 204
 
-
-@app.route("/download_file", methods=["GET"])
-def download_file():
-    """Serve any file from disk for download — used for CNN model and class_indices."""
-    file_path = request.args.get("path", "").strip()
-    if not file_path or not os.path.isfile(file_path):
-        return jsonify({"error": f"File not found: {file_path}"}), 404
-    directory = os.path.dirname(os.path.abspath(file_path))
-    filename  = os.path.basename(file_path)
-    return send_from_directory(directory, filename, as_attachment=True)
-
 @app.route("/health", methods=["GET", "POST"])
 def health():
     return jsonify({"status": "ok", "version": "2.0",
@@ -778,6 +767,9 @@ def train_cnn():
         epochs        = int(body.get("epochs",    50))
         patience      = int(body.get("patience",  10))
         lr            = float(body.get("lr",      1e-3))
+        optimizer_name = body.get("optimizer",   "Adam")
+        test_split    = float(body.get("test_split",  0.20))
+        val_split     = float(body.get("val_split",   0.25))
 
         errors = []
         if not be645_python or not os.path.isfile(be645_python):
@@ -804,7 +796,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from tensorflow.keras import layers, models
 from tensorflow.keras.applications import MobileNetV2,ResNet50,VGG16,EfficientNetB0,InceptionV3
 from tensorflow.keras.callbacks import ModelCheckpoint,EarlyStopping,CSVLogger,ReduceLROnPlateau
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam,SGD,RMSprop,Adamax,Nadam,Adagrad
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 print("TF:", tf.__version__, "GPUs:", len(tf.config.list_physical_devices("GPU")))
@@ -812,6 +804,7 @@ print("TF:", tf.__version__, "GPUs:", len(tf.config.list_physical_devices("GPU")
 dataset_dir,output_dir,base_model_name = r"{dataset_dir}",r"{output_dir}","{base_model}"
 input_shape = ({img_h},{img_w},3)
 batch_size,epochs,patience,lr = {batch_size},{epochs},{patience},{lr}
+optimizer_name = "{optimizer_name}"; test_split={test_split}; val_split={val_split}
 
 file_paths,labels=[],[]
 for c in os.listdir(dataset_dir):
@@ -825,8 +818,9 @@ df=pd.DataFrame({{"image_path":file_paths,"label":labels}})
 n_classes=len(df["label"].unique())
 print(f"Dataset: {{len(df)}} images, {{n_classes}} classes")
 
-train_df,test_df=train_test_split(df,test_size=0.2,random_state=42,stratify=df["label"])
-train_df,val_df =train_test_split(train_df,test_size=0.25,random_state=42,stratify=train_df["label"])
+train_df,test_df=train_test_split(df,test_size=test_split,random_state=42,stratify=df["label"])
+train_df,val_df =train_test_split(train_df,test_size=val_split,random_state=42,stratify=train_df["label"])
+print(f"Split -> train:{{len(train_df)}} val:{{len(val_df)}} test:{{len(test_df)}}")
 
 aug=ImageDataGenerator(rescale=1./255,rotation_range=10,width_shift_range=0.15,
     height_shift_range=0.15,shear_range=0.15,zoom_range=0.15,horizontal_flip=True,fill_mode="nearest")
@@ -846,7 +840,11 @@ x=layers.Dense(256,activation="relu")(x)
 x=layers.Dropout(0.5)(x)
 out=layers.Dense(n_classes,activation="softmax")(x)
 model=models.Model(inputs=base.input,outputs=out)
-model.compile(optimizer=Adam(lr),loss="categorical_crossentropy",metrics=["accuracy"])
+_opt_map={{"Adam":Adam,"SGD":SGD,"RMSprop":RMSprop,"Adamax":Adamax,"Nadam":Nadam,"Adagrad":Adagrad}}
+_opt_cls=_opt_map.get(optimizer_name,Adam)
+_opt=_opt_cls(lr) if optimizer_name!="SGD" else SGD(lr,momentum=0.9)
+model.compile(optimizer=_opt,loss="categorical_crossentropy",metrics=["accuracy"])
+print(f"Optimizer: {{optimizer_name}}(lr={{lr}})")
 
 model.fit(train_gen,validation_data=val_gen,epochs=epochs,callbacks=[
     ModelCheckpoint(os.path.join(output_dir,"Model.keras"),save_best_only=True,monitor="val_accuracy",verbose=1),
@@ -1132,11 +1130,71 @@ def predict_cnn():
         pred_idx = int(np.argmax(preds))
         idx2cls  = {v: k for k, v in class_indices.items()} if class_indices else {}
 
-        return jsonify({
+        # ── Grad-CAM ──────────────────────────────────────────────────────────
+        gradcam_b64 = None
+        want_gradcam = request.form.get("gradcam", "false").lower() == "true"
+        if want_gradcam:
+            try:
+                # Find the last Conv2D layer
+                last_conv = None
+                for layer in reversed(cnn_model.layers):
+                    if isinstance(layer, tf.keras.layers.Conv2D):
+                        last_conv = layer
+                        break
+
+                if last_conv is not None:
+                    # Build gradient model: inputs -> [last_conv_output, predictions]
+                    grad_model = tf.keras.models.Model(
+                        inputs  = cnn_model.inputs,
+                        outputs = [last_conv.output, cnn_model.output],
+                    )
+                    img_tensor = tf.cast(img_arr, tf.float32)
+                    with tf.GradientTape() as tape:
+                        tape.watch(img_tensor)
+                        conv_outputs, predictions = grad_model(img_tensor)
+                        loss = predictions[:, pred_idx]
+
+                    # Gradients of predicted class w.r.t. conv feature maps
+                    grads = tape.gradient(loss, conv_outputs)[0]           # (H, W, C)
+                    conv_out = conv_outputs[0]                              # (H, W, C)
+
+                    # Global-average-pool the gradients over spatial dims → weights
+                    weights = tf.reduce_mean(grads, axis=(0, 1))           # (C,)
+
+                    # Weighted combination of feature maps
+                    cam = tf.reduce_sum(conv_out * weights, axis=-1).numpy()  # (H, W)
+                    cam = np.maximum(cam, 0)                                # ReLU
+                    if cam.max() > 0:
+                        cam = cam / cam.max()
+
+                    # Resize CAM to input image size and colorise
+                    cam_resized = cv2.resize(cam, (input_hw, input_hw))
+                    heatmap = cv2.applyColorMap(
+                        np.uint8(255 * cam_resized), cv2.COLORMAP_JET
+                    )                                                       # BGR uint8
+
+                    # Overlay on original RGB image
+                    orig_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+                    overlay  = cv2.addWeighted(orig_bgr, 0.5, heatmap, 0.5, 0)
+
+                    # Encode to PNG base64
+                    _, buf = cv2.imencode(".png", overlay)
+                    gradcam_b64 = base64.b64encode(buf.tobytes()).decode()
+                    print(f"[GRADCAM] Generated for class {pred_idx} via layer '{last_conv.name}'", flush=True)
+                else:
+                    print("[GRADCAM] No Conv2D layer found — skipping.", flush=True)
+            except Exception as gc_err:
+                print(f"[GRADCAM] Failed: {gc_err}", flush=True)
+                traceback.print_exc()
+
+        resp = {
             "predicted_class": idx2cls.get(pred_idx, f"Class {pred_idx}"),
             "confidence":      float(preds[pred_idx]) * 100,
             "probabilities":   {idx2cls.get(i, f"Class {i}"): float(preds[i]) for i in range(len(preds))},
-        })
+        }
+        if gradcam_b64:
+            resp["gradcam_b64"] = gradcam_b64
+        return jsonify(resp)
 
     except Exception as ex:
         traceback.print_exc()

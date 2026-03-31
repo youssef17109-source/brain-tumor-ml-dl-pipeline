@@ -850,8 +850,10 @@
           <label class="lbl">Dataset Directory</label>
           <input id="dl-dataset" class="inp path-input" type="text" placeholder="/path/to/Dataset">
         </div>
-        <!-- dl-output kept hidden — backend needs it to save model, but user doesn't set it -->
-        <input id="dl-output" type="hidden" value="./CNN_Output">
+        <div style="margin-bottom:12px;">
+          <label class="lbl">Output Directory</label>
+          <input id="dl-output" class="inp path-input" type="text" value="./CNN_Output">
+        </div>
         <div>
           <label class="lbl">Helpers Directory</label>
           <input id="dl-helpers" class="inp path-input" type="text" placeholder="/path/containing/HMB_Spring_2026_Helpers.py">
@@ -909,6 +911,40 @@
           </div>
           <input type="range" min="1" max="50" value="10" oninput="document.getElementById('pat-val').textContent=this.value; dlPatience=+this.value">
         </div>
+
+        <!-- Optimizer -->
+        <div style="margin-top:14px; margin-bottom:12px;">
+          <label class="lbl">Optimizer</label>
+          <select id="dl-optimizer" class="inp">
+            <option value="Adam" selected>Adam</option>
+            <option value="SGD">SGD</option>
+            <option value="RMSprop">RMSprop</option>
+            <option value="Adamax">Adamax</option>
+            <option value="Nadam">Nadam</option>
+            <option value="Adagrad">Adagrad</option>
+          </select>
+        </div>
+
+        <!-- Data Split sliders -->
+        <div class="slider-row">
+          <div class="slider-hdr">
+            <span class="slider-lbl">TEST SPLIT</span>
+            <span class="slider-val" id="test-split-val">20%</span>
+          </div>
+          <input type="range" min="5" max="40" step="5" value="20"
+            oninput="document.getElementById('test-split-val').textContent=this.value+'%'; dlTestSplit=+this.value/100; updateSplitLabel()">
+        </div>
+        <div class="slider-row">
+          <div class="slider-hdr">
+            <span class="slider-lbl">VALIDATION SPLIT <span style="font-size:9px;color:var(--muted);">(of train)</span></span>
+            <span class="slider-val" id="val-split-val-dl">25%</span>
+          </div>
+          <input type="range" min="10" max="40" step="5" value="25"
+            oninput="document.getElementById('val-split-val-dl').textContent=this.value+'%'; dlValSplit=+this.value/100; updateSplitLabel()">
+        </div>
+        <div id="dl-split-label" style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px;">
+          TRAIN 60% · VAL 20% · TEST 20%
+        </div>
       </div>
     </div>
 
@@ -937,11 +973,7 @@
   <div id="dl-results" style="display:none; margin-top:24px;">
     <div class="card">
       <div class="card-label">Test Set Results</div>
-      <div id="dl-metrics" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;"></div>
-    </div>
-    <div class="card">
-      <div class="card-label">Trained Model</div>
-      <div id="dl-dl-wrap"></div>
+      <div class="g4" id="dl-metrics" style="gap:10px;"></div>
     </div>
   </div>
 </div>
@@ -1050,6 +1082,10 @@
         <div class="card">
           <div class="card-label">Upload Image for CNN</div>
           <input id="pred-img-cnn" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;">
+          <div class="chk-row on" id="chk-gradcam" onclick="toggleChk(this)" style="margin-top:10px;">
+            <div class="chk-box">✓</div>
+            <span class="chk-txt">Generate Grad-CAM heatmap</span>
+          </div>
         </div>
 
         <button class="run-btn" onclick="runPredCNN()">▶ PREDICT (CNN)</button>
@@ -1069,8 +1105,7 @@
         </div>
         <div class="card">
           <div class="card-label">CNN Model (Ensemble)</div>
-          <div style="margin-bottom:10px;">
-            <label class="lbl">Load Mode</label>
+          <div style="margin-bottom:10px;"><label class="lbl">Load Mode</label>
             <select id="ens-cnn-load-mode" class="inp" onchange="updateEnsLoadMode()">
               <option value="session">From session (Tab 3)</option>
               <option value="path">From file path</option>
@@ -1079,7 +1114,7 @@
           <div id="ens-cnn-path-wrap" style="display:none;">
             <div style="margin-bottom:8px;"><label class="lbl">Model Path (.keras)</label>
               <input id="ens-model-path" class="inp path-input" type="text" placeholder="/path/to/Model.keras"></div>
-            <div><label class="lbl">Class Indices JSON Path</label>
+            <div><label class="lbl">Class Indices JSON</label>
               <input id="ens-ci-path" class="inp path-input" type="text" placeholder="/path/to/class_indices.json"></div>
           </div>
           <div style="margin-top:10px;"><label class="lbl">CNN Input Size (px)</label>
@@ -1097,8 +1132,7 @@
           <div class="slider-row">
             <div class="slider-hdr"><span class="slider-lbl">ML WEIGHT</span><span class="slider-val" id="ens-ml-w-val">50%</span></div>
             <input type="range" min="10" max="90" step="5" value="50" id="ens-ml-weight"
-              oninput="document.getElementById('ens-ml-w-val').textContent=this.value+'%';
-                       document.getElementById('ens-cnn-w-val').textContent=(100-+this.value)+'%';">
+              oninput="document.getElementById('ens-ml-w-val').textContent=this.value+'%';document.getElementById('ens-cnn-w-val').textContent=(100-+this.value)+'%';">
             <div class="slider-hdr" style="margin-top:6px;"><span class="slider-lbl">CNN WEIGHT</span><span class="slider-val" id="ens-cnn-w-val">50%</span></div>
             <div style="font-size:10px;color:var(--muted);margin-top:4px;font-family:'Space Mono',monospace;">Weighted average of probability vectors — late fusion</div>
           </div>
@@ -1118,6 +1152,20 @@
             <div style="font-family:'Space Mono',monospace;font-size:2rem;color:white;font-weight:700;" id="pred-label-text">—</div>
           </div>
           <div id="pred-bars"></div>
+        </div>
+        <div class="card" id="gradcam-card" style="display:none;">
+          <div class="card-label" style="color:var(--orange);">🔥 GRAD-CAM HEATMAP</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Regions the CNN focused on. Red = highest attention, blue = lowest.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:6px;">ORIGINAL</div>
+              <img id="gradcam-original" src="" style="width:100%;border-radius:8px;border:1px solid var(--border);">
+            </div>
+            <div>
+              <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--orange);letter-spacing:2px;margin-bottom:6px;">HEATMAP OVERLAY</div>
+              <img id="gradcam-overlay" src="" style="width:100%;border-radius:8px;border:1px solid rgba(255,137,6,0.4);box-shadow:0 0 20px rgba(255,137,6,0.15);">
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1178,6 +1226,7 @@ const API = (location.protocol === 'file:' || !location.port)
 // ── State ──────────────────────────────────────
 const activeFeats = new Set(['fof']);
 let mlValSplit = 0.2, mlFsRatio = 80, dlEpochs = 50, dlLR = 0.001, dlPatience = 10;
+let dlTestSplit = 0.20, dlValSplit = 0.25;  // CNN data split ratios
 let sessionML = null;   // stored ml_objects (from Tab 2 → Tab 4)
 let sessionCNN = null;  // stored CNN model path
 
@@ -2092,6 +2141,14 @@ function getSelectedRankMetric(){
 
 function updateMLViz(){ mlActive = true; }
 
+function updateSplitLabel(){
+  const test = Math.round(dlTestSplit * 100);
+  const val  = Math.round((1 - dlTestSplit) * dlValSplit * 100);
+  const train = 100 - test - val;
+  document.getElementById('dl-split-label').textContent =
+    `TRAIN ${train}% · VAL ${val}% · TEST ${test}%`;
+}
+
 function updateNN(){
   const sel = document.getElementById('dl-model').value;
   nnLayers = modelArch[sel] || [3,6,10,10,6,2];
@@ -2115,13 +2172,14 @@ function resetFEResult(){
 function setPredMode(mode){
   ['ml','cnn','ensemble'].forEach(m=>{
     const el=document.getElementById('pred-mode-'+m);
-    if(el) el.classList.toggle('on',m===mode);
+    if(el) el.classList.toggle('on', m===mode);
   });
-  document.getElementById('pred-ml-wrap').style.display       = mode==='ml'?'block':'none';
-  document.getElementById('pred-cnn-wrap').style.display      = mode==='cnn'?'block':'none';
-  document.getElementById('pred-ensemble-wrap').style.display = mode==='ensemble'?'block':'none';
-  document.getElementById('pred-results').style.display='none';
-  document.getElementById('ens-results').style.display='none';
+  document.getElementById('pred-ml-wrap').style.display       = mode==='ml'       ?'block':'none';
+  document.getElementById('pred-cnn-wrap').style.display      = mode==='cnn'      ?'block':'none';
+  document.getElementById('pred-ensemble-wrap').style.display = mode==='ensemble' ?'block':'none';
+  document.getElementById('pred-results').style.display = 'none';
+  document.getElementById('ens-results').style.display  = 'none';
+  const gc=document.getElementById('gradcam-card'); if(gc) gc.style.display='none';
 }
 
 function updateEnsLoadMode(){
@@ -2251,30 +2309,6 @@ async function runFE(){
   const dir = document.getElementById('fe-dataset').value.trim();
   if(!dir){ setAlert('fe-alert','err','Please enter a valid dataset folder path.'); return; }
   if(activeFeats.size===0){ setAlert('fe-alert','err','Please select at least one feature family.'); return; }
-
-  // ── Full reset — runs BEFORE anything else every new extraction ──────────────
-  currentProgPct = 0;
-  feSetProgress(0, 'INITIALIZING…');
-  feResetSteps();
-  feUpdateLive('—', 0, 0, '—');
-  const fnEl = document.getElementById('ls-fname'); if(fnEl) fnEl.textContent = '—';
-  document.getElementById('fe-results').style.display = 'none';
-  document.getElementById('fe-metrics').innerHTML = '';
-  document.getElementById('fe-table-wrap').innerHTML = '';
-  document.getElementById('fe-dl-wrap').innerHTML = '';
-  const sw = document.getElementById('fe-sample-wrap');
-  if(sw) sw.style.display = 'none';
-  const sb = document.getElementById('fe-sample-before'); if(sb) sb.src = '';
-  const sa = document.getElementById('fe-sample-after');  if(sa) sa.src = '';
-  if(typeof nSegments !== 'undefined' && nSegments.length){
-    nSegments.forEach(seg => {
-      seg.active = false;
-      if(seg.glowMesh) seg.glowMesh.material.opacity = 0.04;
-      if(seg.hotspot)  seg.hotspot.material.opacity  = 0.08;
-      if(seg.arcMat)   seg.arcMat.opacity = 0;
-    });
-  }
-  // ─────────────────────────────────────────────────────────────────────────────
 
   const btn = document.getElementById('btn-fe');
   btn.disabled = true; btn.textContent = '⏳ PROCESSING…';
@@ -2763,6 +2797,9 @@ async function runDL(){
     epochs:          dlEpochs,
     patience:        dlPatience,
     lr:              dlLR,
+    optimizer:       document.getElementById('dl-optimizer').value,
+    test_split:      dlTestSplit,
+    val_split:       dlValSplit,
   };
 
   setAlert('dl-alert','info','Training CNN via be645 environment… streaming logs below.');
@@ -2862,30 +2899,6 @@ function showDLResults(results){
   mc.innerHTML = html;
   mc.style.gridTemplateColumns = 'repeat(auto-fill,minmax(120px,1fr))';
   document.getElementById('dl-results').style.display='block';
-
-  // Download button for the saved model (path known from sessionCNN)
-  const dlWrap = document.getElementById('dl-dl-wrap');
-  if(dlWrap){
-    if(sessionCNN && sessionCNN.path){
-      dlWrap.innerHTML = `
-        <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--green);padding:10px;
-          background:rgba(44,182,125,0.08);border:1px solid rgba(44,182,125,0.3);border-radius:8px;margin-bottom:12px;">
-          ✓ MODEL SAVED TO DISK:<br>
-          <span style="color:var(--text);word-break:break-all;">${sessionCNN.path}</span>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <a class="dl-btn" href="${API}/download_file?path=${encodeURIComponent(sessionCNN.path)}" download>
-            ⬇ DOWNLOAD MODEL (.keras)
-          </a>
-          <a class="dl-btn" style="background:linear-gradient(135deg,var(--purple),var(--blue));"
-            href="${API}/download_file?path=${encodeURIComponent(sessionCNN.ci_path)}" download>
-            ⬇ DOWNLOAD CLASS INDICES (.json)
-          </a>
-        </div>`;
-    } else {
-      dlWrap.innerHTML = '<div style="font-size:12px;color:var(--muted);">Model path not available — check output directory.</div>';
-    }
-  }
 }
 
 // ── TAB 4: Predict (ML) ────────────────────────
@@ -2935,6 +2948,7 @@ async function runPredCNN(){
   fd.append('image', imgFile);
   fd.append('input_size', document.getElementById('cnn-input-size').value);
   fd.append('class_labels', document.getElementById('cnn-labels').value);
+  fd.append('gradcam', isChkOn('chk-gradcam') ? 'true' : 'false');
 
   if(mode==='session' && sessionCNN){
     fd.append('model_path', sessionCNN.path);
@@ -2962,7 +2976,7 @@ async function runPredCNN(){
   }
 }
 
-// ── Ensemble helpers ─────────────────────────────────────────────────────────
+// ── Render prediction results ──────────────────
 function renderBars(containerEl, probabilities, gradients){
   if(!containerEl||!probabilities) return;
   const defs=['linear-gradient(90deg,var(--purple),var(--pink))','linear-gradient(90deg,var(--green),var(--blue))','linear-gradient(90deg,var(--blue),var(--purple))','linear-gradient(90deg,var(--orange),var(--pink))'];
@@ -2985,27 +2999,25 @@ async function runPredEnsemble(){
   const mlW=(+document.getElementById('ens-ml-weight').value)/100;
   const cnnW=1-mlW;
   setAlert('pred-alert','info','Running ensemble inference (ML + CNN in parallel)…');
-
   const mlFd=new FormData();
   mlFd.append('image',imgFile);
   const mask=document.getElementById('ens-mask').files[0];
   if(mask) mlFd.append('mask',mask);
   const useSessionML=document.getElementById('chk-ens-session-ml').classList.contains('on');
-  if(useSessionML&&sessionML){ mlFd.append('session_key',sessionML); }
-  else {
+  if(useSessionML&&sessionML){mlFd.append('session_key',sessionML);}
+  else{
     const pkl=document.getElementById('ens-pkl').files[0];
     if(!pkl){setAlert('pred-alert','err','Please upload a .pkl or train one in Tab 2.');return;}
     mlFd.append('model_pkl',pkl);
   }
   mlFd.append('target_size',window._lastTargetSize||128);
-
   const cnnFd=new FormData();
   cnnFd.append('image',imgFile);
   cnnFd.append('input_size',document.getElementById('ens-cnn-size').value);
+  cnnFd.append('gradcam','false');
   const ensMode=document.getElementById('ens-cnn-load-mode').value;
   if(ensMode==='session'&&sessionCNN){cnnFd.append('model_path',sessionCNN.path);cnnFd.append('ci_path',sessionCNN.ci_path);}
   else{cnnFd.append('model_path',document.getElementById('ens-model-path').value);cnnFd.append('ci_path',document.getElementById('ens-ci-path').value);}
-
   try{
     const [mlResp,cnnResp]=await Promise.all([
       fetch(API+'/predict_ml',{method:'POST',body:mlFd}),
@@ -3015,16 +3027,16 @@ async function runPredEnsemble(){
     const cnnData=await cnnResp.json();
     if(mlData.error){setAlert('pred-alert','err','ML: '+mlData.error);return;}
     if(cnnData.error){setAlert('pred-alert','err','CNN: '+cnnData.error);return;}
-
     const allCls=[...new Set([...Object.keys(mlData.probabilities||{}),...Object.keys(cnnData.probabilities||{})])];
     const fused={};
     allCls.forEach(c=>{
-      fused[c]=mlW*(mlData.probabilities||{})[c]||0 + cnnW*(cnnData.probabilities||{})[c]||0;
+      const mlP=(mlData.probabilities||{})[c]||0;
+      const cnnP=(cnnData.probabilities||{})[c]||0;
+      fused[c]=mlW*mlP+cnnW*cnnP;
     });
     const tot=Object.values(fused).reduce((a,b)=>a+b,0)||1;
     Object.keys(fused).forEach(k=>fused[k]/=tot);
     const winner=Object.entries(fused).reduce((a,b)=>b[1]>a[1]?b:a)[0];
-
     clearAlert('pred-alert');
     document.getElementById('ens-label-text').textContent='🎯 '+winner;
     renderBars(document.getElementById('ens-bars'),fused,['linear-gradient(90deg,var(--orange),var(--pink))','linear-gradient(90deg,var(--blue),var(--purple))','linear-gradient(90deg,var(--green),var(--blue))']);
@@ -3038,7 +3050,6 @@ async function runPredEnsemble(){
   }catch(e){setAlert('pred-alert','err','Ensemble error: '+e.message);}
 }
 
-// ── Render prediction results ──────────────────
 function showPredResults(data){
   document.getElementById('pred-label-text').textContent = '🎯 ' + (data.predicted_class || '—');
   document.getElementById('pred-results').style.display = 'block';
@@ -3046,10 +3057,9 @@ function showPredResults(data){
 
   // Show all training metrics if session model was used
   const mp = document.getElementById('pred-metrics-panel');
-  const useSession = document.getElementById('chk-use-session-ml')?.classList.contains('on');
   const trainingMetrics = window._lastMLMetrics;
 
-  if(useSession && trainingMetrics) {
+  if(trainingMetrics) {
     // Show all 9 training metrics from the last trained model
     const allMetrics = [
       { key:'Macro Accuracy', color:'var(--blue)', label:'MACRO ACC' },
@@ -3100,6 +3110,25 @@ function showPredResults(data){
       const pct = Math.round(Object.values(data.probabilities)[i]*100);
       setTimeout(()=>{ const el=document.getElementById('pb-'+i); if(el) el.style.width=pct+'%'; }, 200+i*200);
     });
+  }
+  // Grad-CAM heatmap
+  const gcCard = document.getElementById('gradcam-card');
+  if(data.gradcam_b64 && gcCard){
+    // Use whichever image input has a file (CNN mode uses pred-img-cnn)
+    const imgInput = document.getElementById('pred-img-cnn');
+    const imgFile  = imgInput && imgInput.files[0];
+    if(imgFile){
+      const reader = new FileReader();
+      reader.onload = e => { document.getElementById('gradcam-original').src = e.target.result; };
+      reader.readAsDataURL(imgFile);
+    } else {
+      // Fallback: hide original panel gracefully if no file reference
+      document.getElementById('gradcam-original').src = '';
+    }
+    document.getElementById('gradcam-overlay').src = 'data:image/png;base64,' + data.gradcam_b64;
+    gcCard.style.display = 'block';
+  } else if(gcCard){
+    gcCard.style.display = 'none';
   }
 }
 
