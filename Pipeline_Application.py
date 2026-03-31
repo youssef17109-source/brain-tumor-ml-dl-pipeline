@@ -576,10 +576,9 @@ def train_ml():
             except Exception:
                 pass
 
-        pkl_b64 = base64.b64encode(pickle.dumps(objects)).decode()
-        # Also store the target_size used during training inside objects
-        # so prediction can use the exact same resize dimensions
+        # Store _target_size before serialising so the downloaded pkl contains it
         objects["_target_size"] = int(request.form.get("target_size_used", 128))
+        pkl_b64 = base64.b64encode(pickle.dumps(objects)).decode()
         key     = str(uuid.uuid4())
         SESSION[key] = {"objects": objects, "type": "ml_model"}
 
@@ -1075,7 +1074,6 @@ def predict_ml():
         else:
             pred_label = le.inverse_transform([model.predict(X)[0]])[0]
             probs_dict = {pred_label: 1.0}
-            probs      = np.array([1.0])   # fallback so SHAP pred_class_idx is safe
             probs      = np.array([1.0])   # fallback so SHAP pred_class_idx is safe
 
         print(f"[PRED] Final result: {pred_label}", flush=True)

@@ -872,21 +872,23 @@
             <option value="InceptionV3">InceptionV3</option>
           </select>
         </div>
-        <div class="g2" style="margin-bottom:12px; gap:10px;">
-          <div>
-            <label class="lbl">Image H (px)</label>
-            <input id="dl-imgh" class="inp" type="number" value="256" min="32" step="32">
-          </div>
-          <div>
-            <label class="lbl">Image W (px)</label>
-            <input id="dl-imgw" class="inp" type="number" value="256" min="32" step="32">
-          </div>
+        <div style="margin-bottom:12px;">
+          <label class="lbl">Image Size (px) — valid for selected backbone</label>
+          <select id="dl-imgsize" class="inp" onchange="document.getElementById('dl-imgh').value=this.value; document.getElementById('dl-imgw').value=this.value;">
+            <option value="224" selected>224 × 224</option>
+          </select>
+          <!-- Hidden inputs keep the rest of the code unchanged -->
+          <input id="dl-imgh" type="hidden" value="224">
+          <input id="dl-imgw" type="hidden" value="224">
         </div>
         <div style="margin-bottom:12px;">
           <label class="lbl">Batch Size</label>
           <select id="dl-batch" class="inp">
-            <option>8</option><option>16</option><option value="32" selected>32</option>
-            <option>64</option><option>128</option>
+            <option value="8">8</option>
+            <option value="16">16</option>
+            <option value="32" selected>32</option>
+            <option value="64">64</option>
+            <option value="128">128</option>
           </select>
         </div>
 
@@ -974,6 +976,25 @@
     <div class="card">
       <div class="card-label">Test Set Results</div>
       <div class="g4" id="dl-metrics" style="gap:10px;"></div>
+    </div>
+    <div class="card" id="dl-download-card" style="display:none;">
+      <div class="card-label" style="color:var(--green);">⬇ SAVED MODEL FILES</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Copy these paths to use in Tab 4 → CNN Model → "From file path on disk"</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
+          <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--green);letter-spacing:2px;margin-bottom:4px;">MODEL (.keras)</div>
+          <div id="dl-model-path-display" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text);word-break:break-all;"></div>
+        </div>
+        <div style="background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
+          <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--blue);letter-spacing:2px;margin-bottom:4px;">CLASS INDICES (.json)</div>
+          <div id="dl-ci-path-display" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text);word-break:break-all;"></div>
+        </div>
+        <button class="run-btn" style="margin-top:4px;background:linear-gradient(135deg,var(--green),var(--blue));"
+          onclick="const tabs=document.querySelectorAll('.tab-btn'); switchTab('pred', tabs[tabs.length-1]);
+                   setPredMode('cnn'); document.getElementById('cnn-load-mode').value='session'; updateCNNLoadMode();">
+          ▶ USE IN TAB 4 (CNN PREDICT)
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -1090,7 +1111,19 @@
           </div>
           <div style="margin-top:8px;">
             <label class="lbl">Model Input Size (px)</label>
-            <input id="cnn-input-size" class="inp" type="number" value="256" min="32" step="32">
+            <select id="cnn-input-size" class="inp">
+              <option value="96">96</option>
+              <option value="128">128</option>
+              <option value="160">160</option>
+              <option value="192">192</option>
+              <option value="224" selected>224</option>
+              <option value="240">240</option>
+              <option value="256">256</option>
+              <option value="299">299</option>
+              <option value="320">320</option>
+              <option value="384">384</option>
+              <option value="512">512</option>
+            </select>
           </div>
         </div>
 
@@ -1133,7 +1166,20 @@
               <input id="ens-ci-path" class="inp path-input" type="text" placeholder="/path/to/class_indices.json"></div>
           </div>
           <div style="margin-top:10px;"><label class="lbl">CNN Input Size (px)</label>
-            <input id="ens-cnn-size" class="inp" type="number" value="256" min="32" step="32"></div>
+            <select id="ens-cnn-size" class="inp">
+              <option value="96">96</option>
+              <option value="128">128</option>
+              <option value="160">160</option>
+              <option value="192">192</option>
+              <option value="224" selected>224</option>
+              <option value="240">240</option>
+              <option value="256">256</option>
+              <option value="299">299</option>
+              <option value="320">320</option>
+              <option value="384">384</option>
+              <option value="512">512</option>
+            </select>
+          </div>
         </div>
         <div class="card">
           <div class="card-label">Upload Image</div>
@@ -2179,10 +2225,30 @@ function updateSplitLabel(){
     `TRAIN ${train}% · VAL ${val}% · TEST ${test}%`;
 }
 
+// Valid input sizes per backbone (enforced by Keras application API)
+const backboneSizes = {
+  'MobileNetV2':    [96, 128, 160, 192, 224],
+  'ResNet50':       [224, 256, 320, 384],
+  'VGG16':          [224, 256, 320, 384],
+  'EfficientNetB0': [224, 240, 256],
+  'InceptionV3':    [299, 320, 384],
+};
+
 function updateNN(){
   const sel = document.getElementById('dl-model').value;
   nnLayers = modelArch[sel] || [3,6,10,10,6,2];
   document.getElementById('nn-arch-label').textContent = sel + ' · ' + nnLayers.length + ' LAYERS · ' + nnLayers.reduce((a,b)=>a+b,0) + ' NEURONS';
+
+  // Repopulate valid image sizes for this backbone
+  const sizes   = backboneSizes[sel] || [224];
+  const sizeSel = document.getElementById('dl-imgsize');
+  const current = +sizeSel.value;
+  sizeSel.innerHTML = sizes.map(s =>
+    `<option value="${s}"${s === current || (sizes.indexOf(current) === -1 && s === sizes[0]) ? ' selected' : ''}>${s} × ${s}</option>`
+  ).join('');
+  const chosen = +sizeSel.value;
+  document.getElementById('dl-imgh').value = chosen;
+  document.getElementById('dl-imgw').value = chosen;
 }
 
 function setAlert(elId, type, msg){
@@ -2241,6 +2307,16 @@ function updateCNNLoadMode(){
   document.getElementById('cnn-path-wrap').style.display   = mode==='path'?'block':'none';
   document.getElementById('cnn-upload-wrap').style.display = mode==='upload'?'block':'none';
   document.getElementById('cnn-labels-wrap').style.display = mode==='session'?'none':'block';
+  // If session mode but no session exists, warn user
+  if(mode==='session' && !sessionCNN){
+    setAlert('pred-alert','warn','No CNN model trained in this session yet. Train one in Tab 3 first, or choose "From file path".');
+  } else {
+    clearAlert('pred-alert');
+  }
+  // Auto-fill input size from session if available
+  if(mode==='session' && sessionCNN && sessionCNN.input_size){
+    document.getElementById('cnn-input-size').value = sessionCNN.input_size;
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -2813,8 +2889,10 @@ async function runDL(){
   btn.disabled=true; btn.textContent='⏳ TRAINING…';
 
   document.getElementById('dl-prog-wrap').style.display='block';
+  document.getElementById('dl-results').style.display='none';
+  document.getElementById('dl-download-card').style.display='none';
   const logBox = document.getElementById('dl-log');
-  logBox.innerHTML = '<span class="log-info">→ Launching training subprocess…</span>\n';
+  logBox.innerHTML = '<span class="log-info">-> Launching training subprocess…</span>\n';
 
   const payload = {
     be645_python:    python,
@@ -2861,6 +2939,19 @@ async function runDL(){
           try{
             const results = JSON.parse(line.replace('RESULTS_JSON:',''));
             showDLResults(results);
+            // Normalise path separator for Windows paths
+            const sep = output.includes('\\') ? '\\' : '/';
+            const modelPath = output + sep + 'Model.keras';
+            const ciPath    = output + sep + 'class_indices.json';
+            const imgSize   = +document.getElementById('dl-imgh').value || 224;
+            sessionCNN = { path: modelPath, ci_path: ciPath, input_size: imgSize };
+            // Auto-fill Tab 4 CNN input size
+            document.getElementById('cnn-input-size').value = imgSize;
+            document.getElementById('ens-cnn-size').value   = imgSize;
+            // Show download card with paths
+            document.getElementById('dl-model-path-display').textContent = modelPath;
+            document.getElementById('dl-ci-path-display').textContent    = ciPath;
+            document.getElementById('dl-download-card').style.display    = 'block';
           }catch(e){}
           continue;
         }
@@ -2889,7 +2980,6 @@ async function runDL(){
     document.getElementById('dl-prog-txt').textContent = 'COMPLETE';
     clearAlert('dl-alert');
     setAlert('dl-alert','ok','Training complete! Model saved to output directory.');
-    sessionCNN = { path: output+'/Model.keras', ci_path: output+'/class_indices.json' };
 
   } catch(e) {
     setAlert('dl-alert','err','Error: '+e.message);
@@ -2986,12 +3076,15 @@ async function runPredCNN(){
   fd.append('class_labels', document.getElementById('cnn-labels').value);
   fd.append('gradcam', isChkOn('chk-gradcam') ? 'true' : 'false');
 
-  if(mode==='session' && sessionCNN){
+  if(mode==='session'){
+    if(!sessionCNN){ setAlert('pred-alert','err','No CNN model in session. Train one in Tab 3 or switch to "From file path".'); return; }
     fd.append('model_path', sessionCNN.path);
     fd.append('ci_path',    sessionCNN.ci_path);
   } else if(mode==='path'){
-    fd.append('model_path', document.getElementById('cnn-model-path').value);
-    fd.append('ci_path',    document.getElementById('cnn-ci-path').value);
+    const mp = document.getElementById('cnn-model-path').value.trim();
+    if(!mp){ setAlert('pred-alert','err','Please enter the model path.'); return; }
+    fd.append('model_path', mp);
+    fd.append('ci_path',    document.getElementById('cnn-ci-path').value.trim());
   } else {
     const kerasFile = document.getElementById('pred-keras-file').files[0];
     if(!kerasFile){ setAlert('pred-alert','err','Please upload a .keras / .h5 model file.'); return; }
