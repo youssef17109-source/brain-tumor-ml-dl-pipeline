@@ -59,6 +59,7 @@ for _imp, _pip in [
     ("trimesh",    "trimesh"),
     ("optuna",     "optuna"),
     ("shutup",     "shutup"),
+    ("shap",       "shap"),
 ]:
     _ensure(_imp, _pip)
 print("Dependencies OK.\n", flush=True)
@@ -207,6 +208,7 @@ from HMB_Spring_2026_Helpers import *
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app  = Flask(__name__)
 CORS(app)
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB — covers large .keras model uploads
 SESSION: dict = {}   # { uuid -> { "objects": ..., "type": ... } }
 
 
@@ -1073,9 +1075,153 @@ def predict_ml():
         else:
             pred_label = le.inverse_transform([model.predict(X)[0]])[0]
             probs_dict = {pred_label: 1.0}
+            probs      = np.array([1.0])   # fallback so SHAP pred_class_idx is safe
+            probs      = np.array([1.0])   # fallback so SHAP pred_class_idx is safe
 
         print(f"[PRED] Final result: {pred_label}", flush=True)
-        return jsonify({"predicted_class": pred_label, "probabilities": probs_dict})
+
+        # ── SHAP explanation ───────────────────────────────────────────────────
+        shap_b64 = None
+        want_shap = request.form.get("shap", "false").lower() == "true"
+        if want_shap:
+            try:
+                import shap as _shap
+
+                # ── Feature names — always match X width exactly ───────────────
+                n_feats = X.shape[1]
+                if cols is not None and len(cols) > 0:
+                    if fs is not None:
+                        try:
+                            support = fs.get_support()
+                            feat_names = [c for c, s in zip(cols, support) if s]
+                        except Exception:
+                            feat_names = list(cols)
+                    else:
+                        feat_names = list(cols)
+                else:
+                    feat_names = [f"f{i}" for i in range(n_feats)]
+                # Pad / trim to match X exactly
+                if len(feat_names) < n_feats:
+                    feat_names += [f"f{i}" for i in range(len(feat_names), n_feats)]
+                feat_names = feat_names[:n_feats]
+
+                # ── Predicted class index ──────────────────────────────────────
+                pred_class_idx = int(np.argmax(probs))
+                n_classes      = len(le.classes_)
+
+                X_explain  = X.astype(np.float64)          # (1, n_feats)
+                background = np.zeros((1, n_feats))         # neutral baseline
+
+                # ── Compute raw SHAP values ────────────────────────────────────
+                model_type = type(model).__name__
+                TREE_MODELS = {"RandomForestClassifier","GradientBoostingClassifier",
+                               "ExtraTreesClassifier","AdaBoostClassifier",
+                               "DecisionTreeClassifier","XGBClassifier","LGBMClassifier"}
+
+                if model_type in TREE_MODELS:
+                    explainer   = _shap.TreeExplainer(model)
+                    raw         = explainer.shap_values(X_explain)
+                else:
+                    # Works for LR, MLP, KNN, SVC, GNB, SGD — everything else
+                    predict_fn  = (model.predict_proba
+                                   if hasattr(model, "predict_proba")
+                                   else model.predict)
+                    explainer   = _shap.KernelExplainer(predict_fn, background)
+                    raw         = explainer.shap_values(X_explain, nsamples=128,
+                                                        silent=True)
+
+                # ── Normalise to 1-D array for predicted class ─────────────────
+                # raw can be:
+                #   list of (1, n_feats) arrays  — one per class  [common]
+                #   ndarray (n_classes, 1, n_feats)               [newer tree]
+                #   ndarray (1, n_feats)                          [binary / kernel single]
+                #   ndarray (1, n_feats, n_classes)               [unified API]
+                if isinstance(raw, list):
+                    # list[class_idx] → (1, n_feats) or (n_feats,)
+                    idx = min(pred_class_idx, len(raw) - 1)
+                    sv  = np.array(raw[idx]).ravel()
+                else:
+                    arr = np.array(raw)
+                    if arr.ndim == 3:
+                        if arr.shape[0] == 1:
+                            # (1, n_feats, n_classes) — unified API
+                            idx = min(pred_class_idx, arr.shape[2] - 1)
+                            sv  = arr[0, :, idx]
+                        else:
+                            # (n_classes, 1, n_feats)
+                            idx = min(pred_class_idx, arr.shape[0] - 1)
+                            sv  = arr[idx, 0, :]
+                    elif arr.ndim == 2:
+                        # (1, n_feats) — single output or binary
+                        sv = arr[0]
+                    else:
+                        sv = arr.ravel()
+
+                sv = np.array(sv, dtype=float).ravel()
+                # Safety: length must match n_feats
+                if len(sv) != n_feats:
+                    sv = sv[:n_feats] if len(sv) > n_feats else np.pad(sv, (0, n_feats - len(sv)))
+
+                print(f"[SHAP] {type(explainer).__name__} | class={pred_class_idx} "
+                      f"| sv.shape={sv.shape} | "
+                      f"top: {feat_names[int(np.argmax(np.abs(sv)))]} "
+                      f"({sv[int(np.argmax(np.abs(sv)))]:.4f})", flush=True)
+
+                # ── Bar chart — top 15 features by |SHAP| ─────────────────────
+                N     = min(15, n_feats)
+                order = np.argsort(np.abs(sv))[::-1][:N]
+                vals  = sv[order]                    # highest → lowest importance
+                names = [feat_names[i] for i in order]
+
+                fig, ax = plt.subplots(figsize=(7, max(3, N * 0.42)),
+                                       facecolor="#0d0d1a")
+                ax.set_facecolor("#0d0d1a")
+                # Reverse so most important is at top of horizontal bar chart
+                bar_colors = ["#ff2d78" if v < 0 else "#00d4ff" for v in vals[::-1]]
+                ax.barh(range(N), vals[::-1], color=bar_colors,
+                        edgecolor="none", height=0.65)
+                ax.set_yticks(range(N))
+                ax.set_yticklabels([n[:30] for n in names[::-1]],
+                                   fontsize=7, color="#c0c0d0",
+                                   fontfamily="monospace")
+                ax.set_xlabel("SHAP value  (impact on predicted class score)",
+                              fontsize=8, color="#6b7280", labelpad=8)
+                ax.set_title(f"SHAP — top features for: {pred_label}",
+                             fontsize=9, color="#e8e8f0",
+                             fontfamily="monospace", pad=10)
+                ax.axvline(0, color="#ffffff33", linewidth=0.8, linestyle="--")
+                ax.tick_params(colors="#6b7280", labelsize=7)
+                for spine in ax.spines.values():
+                    spine.set_edgecolor("#ffffff11")
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                from matplotlib.patches import Patch
+                ax.legend(handles=[Patch(color="#00d4ff", label="Pushes toward class"),
+                                   Patch(color="#ff2d78", label="Pushes away from class")],
+                          fontsize=7, facecolor="#1a1a2e", edgecolor="#ffffff22",
+                          labelcolor="#c0c0d0", loc="lower right")
+                fig.tight_layout()
+
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", dpi=130, bbox_inches="tight",
+                            facecolor="#0d0d1a")
+                plt.close(fig)
+                buf.seek(0)
+                shap_b64 = base64.b64encode(buf.read()).decode()
+                print("[SHAP] Plot encoded OK.", flush=True)
+
+            except Exception as shap_err:
+                print(f"[SHAP] Failed: {shap_err}", flush=True)
+                traceback.print_exc()
+                shap_b64 = None
+                shap_err_msg = str(shap_err)
+
+        resp = {"predicted_class": pred_label, "probabilities": probs_dict}
+        if shap_b64:
+            resp["shap_b64"] = shap_b64
+        elif want_shap:
+            resp["shap_error"] = locals().get("shap_err_msg", "SHAP did not run")
+        return jsonify(resp)
 
     except Exception as ex:
         traceback.print_exc()
@@ -1209,7 +1355,6 @@ if __name__ == "__main__":
     print("=" * 55)
     print("  NEXUS Flask API v2.3  —  http://localhost:5000")
     print("=" * 55)
-    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
     try:
         from waitress import serve
         print("  Using waitress WSGI server (no timeout limits)", flush=True)

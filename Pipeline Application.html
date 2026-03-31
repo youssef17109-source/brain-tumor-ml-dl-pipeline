@@ -1032,9 +1032,24 @@
             <label class="lbl">Medical Image (grayscale)</label>
             <input id="pred-img-ml" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;">
           </div>
-          <div>
+          <div style="margin-bottom:10px;">
             <label class="lbl">Mask (optional)</label>
             <input id="pred-mask-ml" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;">
+          </div>
+          <div style="margin-bottom:10px;">
+            <label class="lbl">Target Size (must match training)</label>
+            <select id="pred-target-size" class="inp">
+              <option value="">Auto (read from model)</option>
+              <option value="64">64 × 64</option>
+              <option value="128">128 × 128</option>
+              <option value="192">192 × 192</option>
+              <option value="256">256 × 256</option>
+              <option value="512">512 × 512</option>
+            </select>
+          </div>
+          <div class="chk-row on" id="chk-shap" onclick="toggleChk(this)" style="margin-top:10px;">
+            <div class="chk-box">✓</div>
+            <span class="chk-txt">Generate SHAP feature importance</span>
           </div>
         </div>
 
@@ -1124,8 +1139,18 @@
           <div class="card-label">Upload Image</div>
           <div style="margin-bottom:10px;"><label class="lbl">Medical Image</label>
             <input id="ens-img" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;"></div>
-          <div><label class="lbl">Mask (optional, for ML)</label>
+          <div style="margin-bottom:10px;"><label class="lbl">Mask (optional, for ML)</label>
             <input id="ens-mask" type="file" accept=".png,.jpg,.bmp" class="inp" style="padding:8px;"></div>
+          <div><label class="lbl">ML Target Size (must match training)</label>
+            <select id="ens-target-size" class="inp">
+              <option value="">Auto (read from model)</option>
+              <option value="64">64 × 64</option>
+              <option value="128">128 × 128</option>
+              <option value="192">192 × 192</option>
+              <option value="256">256 × 256</option>
+              <option value="512">512 × 512</option>
+            </select>
+          </div>
         </div>
         <div class="card">
           <div class="card-label">Fusion Weights</div>
@@ -1166,6 +1191,11 @@
               <img id="gradcam-overlay" src="" style="width:100%;border-radius:8px;border:1px solid rgba(255,137,6,0.4);box-shadow:0 0 20px rgba(255,137,6,0.15);">
             </div>
           </div>
+        </div>
+        <div class="card" id="shap-card" style="display:none;">
+          <div class="card-label" style="color:var(--green);">🧠 SHAP FEATURE IMPORTANCE</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Top features driving this prediction. <span style="color:#00d4ff;">Blue = pushes toward class</span> · <span style="color:#ff2d78;">Red = pushes away</span>.</div>
+          <img id="shap-plot" src="" style="width:100%;border-radius:8px;border:1px solid rgba(44,182,125,0.3);box-shadow:0 0 20px rgba(44,182,125,0.1);">
         </div>
       </div>
 
@@ -2180,6 +2210,7 @@ function setPredMode(mode){
   document.getElementById('pred-results').style.display = 'none';
   document.getElementById('ens-results').style.display  = 'none';
   const gc=document.getElementById('gradcam-card'); if(gc) gc.style.display='none';
+  const sc=document.getElementById('shap-card');    if(sc) sc.style.display='none';
 }
 
 function updateEnsLoadMode(){
@@ -2916,13 +2947,18 @@ async function runPredML(){
 
   if(useSession && sessionML){
     fd.append('session_key', sessionML);
+    fd.append('target_size', window._lastTargetSize || 128);
   } else {
     const pkl = document.getElementById('pred-pkl').files[0];
     if(!pkl){ setAlert('pred-alert','err','Please upload a .pkl model file or train one in Tab 2.'); return; }
     fd.append('model_pkl', pkl);
+    // Do NOT send target_size — let the backend read _target_size from inside the pkl
   }
+  // If user manually chose a size, override whatever was set above
+  const manualSize = document.getElementById('pred-target-size').value;
+  if(manualSize) fd.set('target_size', manualSize);
 
-  fd.append('target_size', window._lastTargetSize || 128);
+  fd.append('shap', isChkOn('chk-shap') ? 'true' : 'false');
   setAlert('pred-alert','info','Running inference…');
 
   try {
@@ -3004,13 +3040,18 @@ async function runPredEnsemble(){
   const mask=document.getElementById('ens-mask').files[0];
   if(mask) mlFd.append('mask',mask);
   const useSessionML=document.getElementById('chk-ens-session-ml').classList.contains('on');
-  if(useSessionML&&sessionML){mlFd.append('session_key',sessionML);}
-  else{
+  if(useSessionML&&sessionML){
+    mlFd.append('session_key',sessionML);
+    mlFd.append('target_size',window._lastTargetSize||128);
+  } else{
     const pkl=document.getElementById('ens-pkl').files[0];
     if(!pkl){setAlert('pred-alert','err','Please upload a .pkl or train one in Tab 2.');return;}
     mlFd.append('model_pkl',pkl);
+    // Do NOT send target_size — let backend read _target_size from inside the pkl
   }
-  mlFd.append('target_size',window._lastTargetSize||128);
+  // If user manually chose a size, override
+  const ensMlSize = document.getElementById('ens-target-size').value;
+  if(ensMlSize) mlFd.set('target_size', ensMlSize);
   const cnnFd=new FormData();
   cnnFd.append('image',imgFile);
   cnnFd.append('input_size',document.getElementById('ens-cnn-size').value);
@@ -3114,21 +3155,27 @@ function showPredResults(data){
   // Grad-CAM heatmap
   const gcCard = document.getElementById('gradcam-card');
   if(data.gradcam_b64 && gcCard){
-    // Use whichever image input has a file (CNN mode uses pred-img-cnn)
     const imgInput = document.getElementById('pred-img-cnn');
-    const imgFile  = imgInput && imgInput.files[0];
-    if(imgFile){
+    if(imgInput && imgInput.files[0]){
       const reader = new FileReader();
       reader.onload = e => { document.getElementById('gradcam-original').src = e.target.result; };
-      reader.readAsDataURL(imgFile);
-    } else {
-      // Fallback: hide original panel gracefully if no file reference
-      document.getElementById('gradcam-original').src = '';
+      reader.readAsDataURL(imgInput.files[0]);
     }
     document.getElementById('gradcam-overlay').src = 'data:image/png;base64,' + data.gradcam_b64;
     gcCard.style.display = 'block';
   } else if(gcCard){
     gcCard.style.display = 'none';
+  }
+  // SHAP feature importance
+  const shapCard = document.getElementById('shap-card');
+  if(data.shap_b64 && shapCard){
+    document.getElementById('shap-plot').src = 'data:image/png;base64,' + data.shap_b64;
+    shapCard.style.display = 'block';
+  } else if(shapCard){
+    shapCard.style.display = 'none';
+    if(data.shap_error){
+      setAlert('pred-alert','warn','SHAP: ' + data.shap_error);
+    }
   }
 }
 
